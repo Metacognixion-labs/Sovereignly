@@ -1,5 +1,5 @@
 #!/bin/sh
-# Sovereignly v3.0.1 — Container Entrypoint
+# Sovereignly v4.0 — Container Entrypoint
 #
 # If LITESTREAM_BUCKET is set → Litestream wraps Bun (continuous backup)
 # Otherwise → plain Bun (local dev / no backup)
@@ -22,8 +22,8 @@ if [ -n "$LITESTREAM_BUCKET" ] && [ -n "$LITESTREAM_ACCESS_KEY_ID" ]; then
 
   # Start Litestream with Bun as the subprocess
   # Litestream will replicate all DBs listed in litestream.yml
-  exec litestream replicate -exec "bun src/server.ts" -config /etc/litestream.yml
+  exec litestream replicate -exec "bun apps/cloud/src/server.ts" -config /etc/litestream.yml
 else
   echo "[entrypoint] No backup configured — running plain Bun"
-  exec bun src/server.ts
+  exec bun apps/cloud/src/server.ts
 fi

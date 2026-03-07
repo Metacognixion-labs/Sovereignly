@@ -1,11 +1,11 @@
-# Sovereignly Cloud v3.0.1 — Business Source License 1.1
+# Sovereignly Cloud v4.0 — Business Source License 1.1
 FROM oven/bun:1-alpine AS builder
 WORKDIR /app
 COPY package.json bun.lock* ./
 COPY packages/ ./packages/
 COPY apps/oss/package.json ./apps/oss/
 COPY apps/cloud/package.json ./apps/cloud/
-RUN bun install --frozen-lockfile --production
+RUN bun install --production
 COPY apps/oss/ ./apps/oss/
 COPY apps/cloud/ ./apps/cloud/
 COPY dashboard/ ./dashboard/
