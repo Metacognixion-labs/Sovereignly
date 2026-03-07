@@ -1,13 +1,17 @@
 # Sovereignly Cloud v4.0 — Business Source License 1.1
 FROM oven/bun:1-alpine AS builder
 WORKDIR /app
+
+# Copy everything needed for workspace resolution
 COPY package.json bun.lock* ./
 COPY packages/ ./packages/
-COPY apps/oss/package.json ./apps/oss/
-COPY apps/cloud/package.json ./apps/cloud/
-RUN bun install --production
 COPY apps/oss/ ./apps/oss/
 COPY apps/cloud/ ./apps/cloud/
+
+# Install deps (workspace links resolve to local dirs)
+RUN bun install --production
+
+# Copy remaining assets
 COPY dashboard/ ./dashboard/
 COPY deploy/landing-page.html ./deploy/
 
