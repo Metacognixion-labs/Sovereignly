@@ -57,6 +57,8 @@ export const BUILTIN_POLICIES: Omit<Policy, "id" | "createdAt">[] = [
       { action: "shell.execute",   effect: "deny" },
       { action: "tenant.access",   effect: "deny",
         conditions: [{ field: "agent.authorized", operator: "eq", value: false }] },
+      { action: "agent.*",         effect: "allow",
+        conditions: [{ field: "agent.authorized", operator: "eq", value: true }] },
     ],
     effect: "allow",
     priority: 1000,
