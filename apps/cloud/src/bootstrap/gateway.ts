@@ -86,7 +86,7 @@ export function createPlatformGateway(cfg: Config, deps: {
 
   // OSS routes (MIT)
   registerChainRoutes(app, deps.chain, compliance, { adminToken: cfg.adminToken, jwtSecret: cfg.jwtSecret });
-  registerAuthRoutes(app, deps.passkeys, deps.oauthBroker, deps.chain, { jwtSecret: cfg.jwtSecret, adminToken: cfg.adminToken, appUrl: cfg.appUrl });
+  registerAuthRoutes(app, deps.passkeys, deps.oauthBroker, deps.chain, { jwtSecret: cfg.jwtSecret, adminToken: cfg.adminToken, appUrl: cfg.appUrl, dataDir: `${cfg.dataDir}/platform` });
 
   // Premium routes (BSL)
   registerTenantRoutes(app, deps.tenantManager, deps.billing, deps.chain, { jwtSecret: cfg.jwtSecret, adminToken: cfg.adminToken });
