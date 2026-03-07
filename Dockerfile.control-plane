@@ -1,0 +1,17 @@
+# Sovereignly Control Plane Dockerfile
+FROM oven/bun:1 AS base
+WORKDIR /app
+
+# Install dependencies
+COPY package.json bun.lockb* ./
+COPY packages/core/package.json packages/core/
+COPY apps/control-plane/package.json apps/control-plane/
+RUN bun install --frozen-lockfile 2>/dev/null || bun install
+
+# Copy source
+COPY packages/ packages/
+COPY apps/control-plane/ apps/control-plane/
+
+EXPOSE 9090
+
+CMD ["bun", "run", "--cwd", "apps/control-plane", "src/server.ts"]

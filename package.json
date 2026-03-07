@@ -1,13 +1,17 @@
 {
   "name": "sovereignly",
-  "version": "3.0.1",
+  "version": "4.0.0",
   "private": true,
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "dev": "bun run --cwd apps/oss src/server.ts",
     "dev:cloud": "bun run --cwd apps/cloud src/server.ts",
+    "dev:control": "bun run --cwd apps/control-plane src/server.ts",
+    "dev:edge": "bun run --cwd apps/edge src/server.ts",
     "start": "bun run --cwd apps/oss src/server.ts",
     "start:cloud": "bun run --cwd apps/cloud src/server.ts",
+    "start:control": "bun run --cwd apps/control-plane src/server.ts",
+    "start:edge": "bun run --cwd apps/edge src/server.ts",
     "test": "bun test apps/oss/src/test/integration.test.ts",
     "test:cloud": "bun test apps/cloud/src/test/",
     "typecheck": "bunx tsc --noEmit",

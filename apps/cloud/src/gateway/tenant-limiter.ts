@@ -1,5 +1,5 @@
 /**
- * Sovereignly v3.0.1  Per-Tenant Rate Limiter
+ * Sovereignly v4.0.0  Per-Tenant Rate Limiter
  *
  * Enforces plan-based rate limits on the SDK event ingest endpoint
  * and tenant API calls. Runs after JWT verification extracts the tenant ID.

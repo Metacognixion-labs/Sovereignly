@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "../../../oss/src/security/crypto.ts";
 /**
- * Sovereignly v3.0.1  Public Routes & Self-Service
+ * Sovereignly v4.0.0  Public Routes & Self-Service
  *
  * Handles the revenue pipeline:
  *   GET  /                               Landing page
@@ -32,7 +32,7 @@ export function registerPublicRoutes(
     } catch {
       return c.json({
         name: "Sovereignly",
-        version: "3.0.1",
+        version: "4.0.0",
         tagline: "Own your serverless. Every execution cryptographically logged, Merkle-rooted, attested to 5 public blockchains.",
         signup: "/_sovereign/signup",
         dashboard: "/_sovereign/dashboard",
@@ -239,7 +239,7 @@ export function registerPublicRoutes(
         platform: {
           tenants: tenants.getActiveCount(),
           mrr:     tenants.getMRR(),
-          version: "3.0.1",
+          version: "4.0.0",
         },
       });
     }

@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "../../../oss/src/security/crypto.ts";
 /**
- * Sovereignly v3.0.1  Webhook Routes
+ * Sovereignly v4.0.0  Webhook Routes
  *
  * POST   /_sovereign/tenants/:id/webhooks           Register webhook
  * GET    /_sovereign/tenants/:id/webhooks           List webhooks

@@ -60,7 +60,7 @@ const APP_URL = process.env.SOVEREIGN_DOMAIN
 
 console.log(`
 
-       SOVEREIGNLY OSS v3.0.1  Open Source Edition         
+       SOVEREIGNLY OSS v4.0.0  Open Source Edition         
 
   Node: ${NODE_ID} | Port: ${PORT} | Workers: ${POOL_SIZE}
   License: MIT | github.com/Metacognixion-labs/Sovereignly
@@ -143,7 +143,7 @@ app.post("/_sovereign/sdk/events", async (c) => {
 // Landing page: point to OSS docs
 app.get("/", (c) => c.json({
   name: "Sovereignly",
-  version: "3.0.1",
+  version: "4.0.0",
   edition: "oss",
   license: "MIT",
   docs: "/_sovereign/health",
@@ -163,7 +163,7 @@ registerFunctionDispatcher(app, runtime, {
 const server = startServer(app, { port: PORT, host: HOST });
 
 await chain.emit("NODE_JOIN", {
-  nodeId: NODE_ID, version: "3.0.1", edition: "oss",
+  nodeId: NODE_ID, version: "4.0.0", edition: "oss",
   port: PORT, features: { passkeys: true, oauth: oauthBroker.getSupportedProviders(), omnichain: true },
 }, "LOW");
 

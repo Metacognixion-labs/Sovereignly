@@ -255,7 +255,7 @@ export class SovereignChain {
       severity: "LOW",
       payload:  {
         nodeId:   this.cfg.nodeId,
-        version:  "3.0.1",
+        version:  "4.0.0",
         platform: "Sovereignly",
         runtime:  `bun/${Bun.version}`,
       },

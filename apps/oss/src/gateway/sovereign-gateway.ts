@@ -116,7 +116,7 @@ export class SovereignGateway {
   // Headers injected on ALL forwarded requests
   private static readonly INJECT_ALWAYS = [
     "x-sovereign-gateway: 1",
-    "x-sovereign-version: 3.0.1",
+    "x-sovereign-version: 4.0.0",
   ];
 
   constructor(cfg: GatewayConfig) {
@@ -296,7 +296,7 @@ export class SovereignGateway {
     }
 
     // Inject standard gateway headers
-    headers.set("x-sovereign-gateway",  "3.0.1");
+    headers.set("x-sovereign-gateway",  "4.0.0");
     headers.set("x-forwarded-for",      this.getIP(c));
     headers.set("x-forwarded-proto",    "https");
     headers.set("x-forwarded-host",     url.hostname);

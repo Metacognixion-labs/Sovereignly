@@ -273,7 +273,7 @@ export function registerTenantRoutes(
     const events = ctx.chain.getEvents({ limit: 10_000 });
 
     const export_ = {
-      exportVersion:  "3.0.1",
+      exportVersion:  "4.0.0",
       tenantId,
       tenantName:     meta.name,
       exportedAt:     new Date().toISOString(),
@@ -325,7 +325,7 @@ export function registerTenantRoutes(
         tenantTips:     globalRoot.tenantTips.slice(0, 10), // preview
       },
       platform: {
-        version:     "3.0.1",
+        version:     "4.0.0",
         uptime:      Math.floor(process.uptime()),
         bunVersion:  typeof Bun !== "undefined" ? Bun.version : "node",
       },

@@ -230,7 +230,7 @@ export class OAuthBroker {
         "Authorization": `Bearer ${accessToken}`,
         "Accept":        "application/json",
         // GitHub requires User-Agent
-        ...(provider === "github" ? { "User-Agent": "Sovereignly/3.0.1" } : {}),
+        ...(provider === "github" ? { "User-Agent": "Sovereignly/4.0.0" } : {}),
       },
       signal: AbortSignal.timeout(8_000),
     });
@@ -246,7 +246,7 @@ export class OAuthBroker {
         headers: {
           "Authorization": `Bearer ${accessToken}`,
           "Accept":        "application/json",
-          "User-Agent":    "Sovereignly/3.0.1",
+          "User-Agent":    "Sovereignly/4.0.0",
         },
         signal: AbortSignal.timeout(5_000),
       }).catch(() => null);

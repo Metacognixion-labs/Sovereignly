@@ -180,7 +180,7 @@ export function registerProtocolRoutes(
   app.get("/v1/info", (c) => {
     return c.json({
       platform:  "Sovereignly",
-      version:   "3.0.1",
+      version:   "4.0.0",
       protocol:  "SPP/1.0",
       primitives: ["TENANT", "MACHINE", "WORKFLOW", "AGENT", "EVENT", "POLICY"],
       layers: [

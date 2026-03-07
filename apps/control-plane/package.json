@@ -1,0 +1,16 @@
+{
+  "name": "@sovereignly/control-plane",
+  "version": "4.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/server.ts",
+  "scripts": {
+    "dev": "bun --hot src/server.ts",
+    "start": "bun src/server.ts"
+  },
+  "dependencies": {
+    "@sovereignly/core": "workspace:*",
+    "hono": "^4.6.0"
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}

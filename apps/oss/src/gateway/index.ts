@@ -10,15 +10,10 @@
  */
 
 import { Hono } from "hono";
-import { timingSafeEqual } from "../security/crypto.ts";
 import { cors } from "hono/cors";
-import { timingSafeEqual } from "../security/crypto.ts";
 import { logger } from "hono/logger";
-import { timingSafeEqual } from "../security/crypto.ts";
 import { timing, setMetric, startTime, endTime } from "hono/timing";
-import { timingSafeEqual } from "../security/crypto.ts";
 import { compress } from "hono/compress";
-import { timingSafeEqual } from "../security/crypto.ts";
 import { etag } from "hono/etag";
 import { timingSafeEqual } from "../security/crypto.ts";
 import type { SovereignRuntime, InvokeRequest } from "../runtime/index.ts";
@@ -190,7 +185,7 @@ export function createGateway(
     return c.json({
       ok:     status === "healthy",
       status,
-      version:    "3.0.1",
+      version:    "4.0.0",
       runtime:    "bun",
       bunVersion: Bun.version,
       node:       process.env.SOVEREIGN_NODE_ID ?? "primary",
@@ -450,7 +445,7 @@ export function registerFunctionDispatcher(
     c.header("x-function-id", fn.id);
     c.header("x-worker-id", String(result.workerId));
     c.header("x-execution-ms", result.ms.toFixed(2));
-    c.header("x-sovereign", "3.0.1");
+    c.header("x-sovereign", "4.0.0");
 
     return new Response(result.body, {
       status: result.status,

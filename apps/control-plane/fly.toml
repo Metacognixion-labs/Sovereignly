@@ -1,0 +1,29 @@
+# Sovereignly Control Plane — Fly.io Deployment
+# Runs as the global control plane (does not execute tenant workloads)
+
+app = "sovereignly-control-plane"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../Dockerfile.control-plane"
+
+[env]
+  NODE_ROLE = "control"
+  PORT = "9090"
+  DATA_DIR = "/data/control-plane"
+
+[http_service]
+  internal_port = 9090
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 2
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 2
+  memory_mb = 1024
+
+[mounts]
+  source = "control_plane_data"
+  destination = "/data/control-plane"

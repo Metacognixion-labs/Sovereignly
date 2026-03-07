@@ -251,7 +251,7 @@ export function applySecurityHeaders(headers: Headers): void {
   headers.set("X-XSS-Protection",           "1; mode=block");
   headers.set("Referrer-Policy",            "strict-origin-when-cross-origin");
   headers.set("Permissions-Policy",         "camera=(), microphone=(), geolocation=()");
-  headers.set("X-Sovereign-Version",        "3.0.1");
+  headers.set("X-Sovereign-Version",        "4.0.0");
   headers.set("X-Sovereign-Node",           process.env.SOVEREIGN_NODE_ID ?? "primary");
 
   headers.set("Content-Security-Policy",
@@ -303,7 +303,7 @@ export function createZeroTrustMiddleware(cfg: ZeroTrustConfig): MiddlewareHandl
       const origAfter = c.res;
       c.header("X-Frame-Options",            "DENY");
       c.header("X-Content-Type-Options",     "nosniff");
-      c.header("X-Sovereign-Version",        "3.0.1");
+      c.header("X-Sovereign-Version",        "4.0.0");
       c.header("Referrer-Policy",            "strict-origin-when-cross-origin");
       c.header("Strict-Transport-Security",  "max-age=31536000; includeSubDomains");
       c.header("Permissions-Policy",         "camera=(), microphone=(), geolocation=()");

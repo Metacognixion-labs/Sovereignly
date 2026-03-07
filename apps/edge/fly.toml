@@ -1,0 +1,27 @@
+# Sovereignly Edge Node — Fly.io Deployment
+# Runs at edge PoPs for low-latency compute
+# Deploy in multiple regions for global coverage
+
+app = "sovereignly-edge"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../Dockerfile.edge"
+
+[env]
+  NODE_ROLE = "edge"
+  PORT = "8788"
+  EDGE_CACHE_TTL = "60000"
+  EDGE_CACHE_MAX = "10000"
+
+[http_service]
+  internal_port = 8788
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

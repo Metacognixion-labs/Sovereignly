@@ -1,5 +1,5 @@
 /**
- * Sovereignly v3.0.1  Webhook Delivery
+ * Sovereignly v4.0.0  Webhook Delivery
  *
  * Pushes events to tenant-registered webhook URLs.
  * Critical for SOC2 evidence trails  auditors need to receive
@@ -170,7 +170,7 @@ export class WebhookManager {
           "X-Sovereign-Signature": `sha256=${signature}`,
           "X-Sovereign-Timestamp": String(payload.timestamp),
           "X-Sovereign-Delivery":  crypto.randomUUID(),
-          "User-Agent":           "Sovereignly/3.0.1",
+          "User-Agent":           "Sovereignly/4.0.0",
         },
         body,
         signal: AbortSignal.timeout(10_000),

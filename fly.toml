@@ -10,6 +10,9 @@ primary_region = "iad"
   WORKER_POOL_SIZE = "2"
   LOG_LEVEL        = "minimal"
   ANCHOR_TIER      = "starter"
+  NODE_ROLE        = "cluster"
+  CLUSTER_ID       = "us-east"
+  NODE_REGION      = "us-east"
 
 [http_service]
   internal_port        = 8787

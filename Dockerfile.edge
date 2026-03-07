@@ -1,0 +1,17 @@
+# Sovereignly Edge Node Dockerfile
+FROM oven/bun:1 AS base
+WORKDIR /app
+
+# Install dependencies
+COPY package.json bun.lockb* ./
+COPY packages/core/package.json packages/core/
+COPY apps/edge/package.json apps/edge/
+RUN bun install --frozen-lockfile 2>/dev/null || bun install
+
+# Copy source
+COPY packages/ packages/
+COPY apps/edge/ apps/edge/
+
+EXPOSE 8788
+
+CMD ["bun", "run", "--cwd", "apps/edge", "src/server.ts"]
