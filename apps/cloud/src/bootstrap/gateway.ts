@@ -82,6 +82,7 @@ export function createPlatformGateway(cfg: Config, deps: {
     enableCompression: cfg.isProduction,
     logLevel: cfg.logLevel,
     zeroTrustMiddleware: zeroTrust,
+    chain: deps.chain,
   });
 
   // OSS routes (MIT)
