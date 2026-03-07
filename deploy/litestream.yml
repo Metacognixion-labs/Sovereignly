@@ -1,0 +1,86 @@
+# Sovereignly v3 — Litestream Configuration
+#
+# Continuous SQLite replication to S3-compatible storage.
+# Litestream replicates WAL frames in near-real-time (~1s lag).
+# This means: zero RPO for the chain, KV, and user databases.
+#
+# Setup:
+#   1. Set LITESTREAM_* env vars in .env
+#   2. Uncomment litestream service in docker-compose.yml
+#
+# Recovery:
+#   litestream restore -config /etc/litestream.yml /data/platform/chain.db
+#
+# Docs: https://litestream.io/guides/docker/
+
+dbs:
+  # ── Platform chain (operator audit log) ────────────────────────────────────
+  - path: /data/platform/chain.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: sovereign/platform/chain
+        region: ${LITESTREAM_REGION:-us-east-1}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        endpoint: ${LITESTREAM_ENDPOINT:-}       # set for R2: https://{accountId}.r2.cloudflarestorage.com
+        force-path-style: ${LITESTREAM_PATH_STYLE:-false}   # true for R2/MinIO
+        sync-interval: 1s
+        retention: 72h                            # keep 3 days of WAL frames
+        retention-check-interval: 1h
+
+  # ── Platform users + passkeys ───────────────────────────────────────────────
+  - path: /data/platform/users.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: sovereign/platform/users
+        region: ${LITESTREAM_REGION:-us-east-1}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        endpoint: ${LITESTREAM_ENDPOINT:-}
+        force-path-style: ${LITESTREAM_PATH_STYLE:-false}
+        sync-interval: 5s
+
+  # ── Global tenant registry ──────────────────────────────────────────────────
+  - path: /data/global/tenants.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: sovereign/global/tenants
+        region: ${LITESTREAM_REGION:-us-east-1}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        endpoint: ${LITESTREAM_ENDPOINT:-}
+        force-path-style: ${LITESTREAM_PATH_STYLE:-false}
+        sync-interval: 5s
+
+  # ── Per-tenant chains (replicated individually) ─────────────────────────────
+  # NOTE: tenant chain.db files are discovered dynamically.
+  # Use a glob pattern — Litestream 0.4+ supports path globs.
+  - path: /data/tenants/*/chain.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: sovereign/tenants
+        region: ${LITESTREAM_REGION:-us-east-1}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        endpoint: ${LITESTREAM_ENDPOINT:-}
+        force-path-style: ${LITESTREAM_PATH_STYLE:-false}
+        sync-interval: 5s
+        retention: 30d                            # chain data kept 30 days
+
+  # ── Per-tenant KV stores ────────────────────────────────────────────────────
+  - path: /data/tenants/*/kv.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: sovereign/tenants-kv
+        region: ${LITESTREAM_REGION:-us-east-1}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        endpoint: ${LITESTREAM_ENDPOINT:-}
+        force-path-style: ${LITESTREAM_PATH_STYLE:-false}
+        sync-interval: 10s
+        retention: 7d

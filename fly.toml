@@ -1,0 +1,40 @@
+app            = "sovereignly"
+primary_region = "iad"
+
+[build]
+  dockerfile = "apps/cloud/Dockerfile"
+
+[env]
+  PORT             = "8787"
+  NODE_ENV         = "production"
+  WORKER_POOL_SIZE = "2"
+  LOG_LEVEL        = "minimal"
+  ANCHOR_TIER      = "starter"
+
+[http_service]
+  internal_port        = 8787
+  force_https          = true
+  auto_stop_machines   = false
+  auto_start_machines  = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 250
+    soft_limit = 200
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval     = "15s"
+    method       = "GET"
+    path         = "/_sovereign/health"
+    protocol     = "http"
+    timeout      = "3s"
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "512mb"
+
+[[mounts]]
+  source      = "sovereignly_data"
+  destination = "/data"

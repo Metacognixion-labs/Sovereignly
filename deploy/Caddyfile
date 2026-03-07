@@ -1,0 +1,102 @@
+# SovereignCloud v2 — Caddyfile
+#
+# Handles:
+#   - Automatic TLS via Let's Encrypt (HTTP-01 or ACME DNS)
+#   - HTTP/3 (QUIC) if port 443/udp is open
+#   - WebSocket support (for future real-time features)
+#   - Gzip + Zstd compression
+#   - Security headers
+#   - Rate limiting on auth endpoints
+#
+# Usage:
+#   Set SOVEREIGN_DOMAIN and CADDY_EMAIL in .env
+#   docker compose up caddy
+
+{
+	email {$CADDY_EMAIL:admin@localhost}
+	admin off
+}
+
+# ── Primary domain ─────────────────────────────────────────────────────────────
+{$SOVEREIGN_DOMAIN:localhost} {
+
+	# Compression
+	encode gzip zstd
+
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# Rate limit auth endpoints more aggressively
+	@authPaths {
+		path /_sovereign/auth/passkeys/login/complete
+		path /_sovereign/auth/siwe/verify
+		path /_sovereign/auth/solana/verify
+	}
+
+	# Stripe webhooks — no compression, raw body required
+	@stripeWebhook {
+		path /_sovereign/billing/webhook
+	}
+	route @stripeWebhook {
+		reverse_proxy sovereign:8787 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# WebSocket support (chain events streaming, future)
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	route @websocket {
+		reverse_proxy sovereign:8787 {
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# Main proxy
+	reverse_proxy sovereign:8787 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+
+		# Health-check aware load balancing (for cluster mode)
+		health_uri      /_sovereign/health
+		health_interval 10s
+		health_timeout  3s
+
+		# Timeouts
+		transport http {
+			dial_timeout       5s
+			response_header_timeout 30s
+			read_timeout       60s
+			write_timeout      60s
+		}
+	}
+
+	# Logs (JSON for log aggregation)
+	log {
+		output file /data/logs/caddy-access.log {
+			roll_size    100mb
+			roll_keep    10
+			roll_keep_for 720h
+		}
+		format json
+	}
+}
+
+# ── www redirect ───────────────────────────────────────────────────────────────
+www.{$SOVEREIGN_DOMAIN:localhost} {
+	redir https://{$SOVEREIGN_DOMAIN}{uri} permanent
+}

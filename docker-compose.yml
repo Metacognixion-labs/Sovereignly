@@ -1,0 +1,198 @@
+version: "3.9"
+
+# ╔═══════════════════════════════════════════════════════════╗
+# ║  Sovereignly v3 — Bun-powered Compose Stack                ║
+# ║                                                           ║
+# ║  Quickstart:  docker compose up -d                        ║
+# ║  Scale:       docker compose --profile scale up -d        ║
+# ║  Monitor:     docker compose --profile monitoring up -d   ║
+# ╚═══════════════════════════════════════════════════════════╝
+
+networks:
+  sovereign:
+    driver: bridge
+
+volumes:
+  sovereign-data:
+  caddy-data:
+  grafana-data:
+
+services:
+
+  # ── Primary Compute Node ──────────────────────────────────────────────────
+  sovereign:
+    build: .
+    image: metacognixion/sovereignly:3.0
+    container_name: sovereign-primary
+    restart: unless-stopped
+    environment:
+      SOVEREIGN_NODE_ID:   primary
+      PORT:                8787
+      DATA_DIR:            /data
+      WORKER_POOL_SIZE:    ${WORKER_POOL_SIZE:-4}
+      MEMORY_LIMIT_MB:     ${MEMORY_LIMIT_MB:-128}
+      TIMEOUT_MS:          ${TIMEOUT_MS:-30000}
+      RATE_LIMIT:          ${RATE_LIMIT:-600}
+      CORS_ORIGINS:        ${CORS_ORIGINS:-*}
+      ADMIN_TOKEN:         ${ADMIN_TOKEN:-}
+      LOG_LEVEL:           ${LOG_LEVEL:-minimal}
+      # Secrets forwarded to functions as SECRETS.get('KEY_NAME')
+      SECRET_ANTHROPIC_KEY: ${SECRET_ANTHROPIC_KEY:-}
+      SECRET_OPENAI_KEY:    ${SECRET_OPENAI_KEY:-}
+      SECRET_STRIPE_KEY:    ${SECRET_STRIPE_KEY:-}
+      # ── Identity & Security ──────────────────────────────────────────────
+      SOVEREIGN_SERVER_KEY:  ${SOVEREIGN_SERVER_KEY:?SOVEREIGN_SERVER_KEY required}
+      JWT_SECRET:            ${JWT_SECRET:?JWT_SECRET required}
+      ADMIN_TOKEN:           ${ADMIN_TOKEN:-}
+      SOVEREIGN_DOMAIN:      ${SOVEREIGN_DOMAIN:-}
+      # ── OAuth Providers ──────────────────────────────────────────────────
+      GOOGLE_CLIENT_ID:      ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET:  ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID:      ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET:  ${GITHUB_CLIENT_SECRET:-}
+      DISCORD_CLIENT_ID:     ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      META_CLIENT_ID:        ${META_CLIENT_ID:-}
+      META_CLIENT_SECRET:    ${META_CLIENT_SECRET:-}
+      # ── Meridian Ledger ──────────────────────────────────────────────────
+      MERIDIAN_RPC_URL:      ${MERIDIAN_RPC_URL:-}
+      MERIDIAN_CONTRACT:     ${MERIDIAN_CONTRACT:-}
+      CHAIN_ANCHOR_INTERVAL: ${CHAIN_ANCHOR_INTERVAL:-100}
+      ANCHOR_TIER:           ${ANCHOR_TIER:-starter}
+      # ── Omnichain Attestation (EAS/Base, Arbitrum, Solana, Sign, Bitcoin) ──────
+      # Omnichain attestation — EAS on Base + Arbitrum, Solana, Irys, Bitcoin
+      EAS_BASE_RPC:          ${EAS_BASE_RPC:-https://mainnet.base.org}
+      EAS_SIGNER_KEY:        ${EAS_SIGNER_KEY:-}
+      EAS_SCHEMA_UID:        ${EAS_SCHEMA_UID:-0xa3518350e4a3857be49837596827c326dad06d71a9ed18cd883774118c1e90dc}
+      EAS_ARB_RPC:           ${EAS_ARB_RPC:-https://arb1.arbitrum.io/rpc}
+      SIGN_PROTOCOL_RPC:     ${SIGN_PROTOCOL_RPC:-https://mainnet.base.org}
+      SIGN_SCHEMA_ID:        ${SIGN_SCHEMA_ID:-}
+      SOLANA_RPC_URL:        ${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      SOLANA_ANCHOR_KEY:     ${SOLANA_ANCHOR_KEY:-}
+      IRYS_SIGNER_KEY:       ${IRYS_SIGNER_KEY:-}
+      BITCOIN_WIF:           ${BITCOIN_WIF:-}
+      # ── Billing ──────────────────────────────────────────────────────────
+      STRIPE_SECRET_KEY:     ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_STARTER:  ${STRIPE_PRICE_STARTER:-}
+      STRIPE_PRICE_GROWTH:   ${STRIPE_PRICE_GROWTH:-}
+      STRIPE_PRICE_ENTERPRISE: ${STRIPE_PRICE_ENTERPRISE:-}
+    ports:
+      - "${PORT:-8787}:8787"
+    volumes:
+      - sovereign-data:/data
+      - ./functions:/app/functions:ro
+    networks:
+      - sovereign
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"fetch('http://localhost:8787/_sovereign/health').then(r=>process.exit(r.ok?0:1))\""]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    labels:
+      - "com.metacognixion.service=sovereignly"
+      - "com.metacognixion.version=3.0"
+
+  # ── Scale-out replica ─────────────────────────────────────────────────────
+  sovereign-replica:
+    image: metacognixion/sovereignly:3.0
+    restart: unless-stopped
+    environment:
+      SOVEREIGN_NODE_ID: replica-1
+      PORT:              8787
+      DATA_DIR:          /data
+    volumes:
+      - sovereign-data:/data
+      - ./functions:/app/functions:ro
+    networks:
+      - sovereign
+    depends_on:
+      sovereign:
+        condition: service_healthy
+    profiles:
+      - scale
+
+  # ── Caddy (auto-TLS + HTTP/3 + load balancer) ─────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: sovereign-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3 / QUIC
+    environment:
+      CADDY_EMAIL: ${CADDY_EMAIL:-admin@localhost}
+      SOVEREIGN_DOMAIN: ${SOVEREIGN_DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /data/logs:/data/logs
+      - caddy-data:/data
+    networks:
+      - sovereign
+    depends_on:
+      sovereign:
+        condition: service_healthy
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sovereign-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - sovereign
+    profiles:
+      - monitoring
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: sovereign-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-sovereign}
+      GF_USERS_ALLOW_SIGN_UP:     "false"
+      GF_AUTH_ANONYMOUS_ENABLED:  "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - sovereign
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+  # ── Litestream (SQLite continuous replication to S3/R2) ──────────────────
+  litestream:
+    image: litestream/litestream:latest
+    container_name: sovereign-litestream
+    restart: unless-stopped
+    command: replicate
+    environment:
+      LITESTREAM_ACCESS_KEY_ID:     ${LITESTREAM_ACCESS_KEY_ID:-}
+      LITESTREAM_SECRET_ACCESS_KEY: ${LITESTREAM_SECRET_ACCESS_KEY:-}
+      LITESTREAM_BUCKET:            ${LITESTREAM_BUCKET:-}
+      LITESTREAM_REGION:            ${LITESTREAM_REGION:-us-east-1}
+      LITESTREAM_ENDPOINT:          ${LITESTREAM_ENDPOINT:-}
+    volumes:
+      - sovereign-data:/data
+      - ./deploy/litestream.yml:/etc/litestream.yml:ro
+    networks:
+      - sovereign
+    depends_on:
+      sovereign:
+        condition: service_healthy
+    profiles:
+      - backup
+

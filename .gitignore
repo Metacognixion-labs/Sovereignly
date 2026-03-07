@@ -1,0 +1,52 @@
+# ── Dependencies ─────────────────────────────────────────────────
+node_modules/
+bun.lockb
+deploy/node_modules/
+deploy-temp/
+
+# ── Build output ─────────────────────────────────────────────────
+dist/
+.build/
+*.js.map
+
+# ── Runtime data ─────────────────────────────────────────────────
+data/
+/data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# ── Secrets — NEVER COMMIT ───────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.*.local
+*.pem
+*.key
+*.p8
+secrets/
+
+# ── Logs ─────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+
+# ── OS / IDE ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Deployment artifacts ─────────────────────────────────────────
+.fly/
+fly.log
+terraform.tfstate*
+
+# ── Deprecated / scratch ─────────────────────────────────────────
+src/security/_deprecated/
+*-wrong-selectors*

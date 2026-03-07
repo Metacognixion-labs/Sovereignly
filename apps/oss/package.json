@@ -1,0 +1,19 @@
+{
+  "name": "@sovereignly/oss",
+  "version": "3.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/server.ts",
+  "scripts": {
+    "dev": "bun --hot src/server.ts",
+    "start": "bun src/server.ts",
+    "test": "bun test src/test/integration.test.ts"
+  },
+  "dependencies": {
+    "@sovereignly/core": "workspace:*",
+    "hono": "^4.6.0",
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.4.0"
+  },
+  "license": "MIT"
+}

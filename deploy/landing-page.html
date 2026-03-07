@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sovereignly — Own your serverless.</title>
+<meta name="description" content="Deploy serverless functions anywhere. Run local, self-host, or global. No lock-in.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────────
+   SOVEREIGNLY DESIGN TOKENS
+   Colors extracted directly from logo:
+   Blue  → #2B7FFF (peak shield blue, mean #136de2)
+   Green → #70BD58 (peak shield green, mean #4ba254)
+   BG    → #0c1526 (canvas background)
+   White → #fcfdfd (wordmark)
+───────────────────────────────────────────────────────────────── */
+:root {
+  /* Canvas */
+  --bg-void:    #080f1e;
+  --bg-deep:    #0c1526;
+  --bg-card:    #101d35;
+  --bg-raised:  #14233f;
+  --bg-border:  #1c334f;
+  --bg-hover:   #1e3a60;
+
+  /* Logo blue — extracted from shield */
+  --blue:       #2B7FFF;
+  --blue-bright:#4f97ff;
+  --blue-dark:  #1660d8;
+  --blue-glow:  rgba(43,127,255,0.18);
+  --blue-tint:  rgba(43,127,255,0.08);
+
+  /* Logo green — extracted from shield */
+  --green:      #5DB84A;
+  --green-bright:#70c85a;
+  --green-dark: #3a9030;
+  --green-glow: rgba(93,184,74,0.16);
+  --green-tint: rgba(93,184,74,0.08);
+
+  /* Accent — neon lime for CTAs (from brand spec) */
+  --lime:       #C8F135;
+  --lime-dim:   #a8cc20;
+  --lime-glow:  rgba(200,241,53,0.18);
+  --lime-tint:  rgba(200,241,53,0.07);
+
+  /* Text */
+  --t-primary:   #edf2ff;
+  --t-secondary: #6b8ab8;
+  --t-muted:     #334d78;
+  --t-code:      #93c5fd;
+
+  /* Fonts */
+  --f-display: 'Syne', sans-serif;
+  --f-body:    'DM Sans', sans-serif;
+  --f-mono:    'JetBrains Mono', monospace;
+
+  --radius:    8px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --ease:      cubic-bezier(0.4,0,0.2,1);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg-void);
+  color:var(--t-primary);
+  font-family:var(--f-body);
+  line-height:1.6;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+/* Subtle noise grain */
+body::after{
+  content:'';
+  position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:9999;opacity:0.5;
+}
+
+/* ── LAYOUT ─────────────────────────────────────────────────────── */
+.wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+
+/* ── NAV ─────────────────────────────────────────────────────────── */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  height:60px;display:flex;align-items:center;padding:0 28px;
+  transition:.3s var(--ease);
+}
+nav.stuck{
+  background:rgba(8,15,30,0.88);
+  backdrop-filter:blur(24px);
+  border-bottom:1px solid var(--bg-border);
+}
+.nav-wrap{
+  max-width:1120px;width:100%;margin:0 auto;
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+}
+/* Logo lockup — SVG recreation of shield mark */
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;flex-shrink:0}
+.logo-mark{width:32px;height:36px}
+.logo-name{
+  font-family:var(--f-display);font-weight:700;font-size:18px;
+  color:var(--t-primary);letter-spacing:-0.025em;
+}
+.nav-links{display:flex;gap:2px;list-style:none}
+.nav-links a{
+  font-size:13.5px;font-weight:500;color:var(--t-secondary);
+  text-decoration:none;padding:6px 12px;border-radius:var(--radius);
+  transition:.15s var(--ease);
+}
+.nav-links a:hover{color:var(--t-primary);background:var(--bg-card)}
+.nav-end{display:flex;gap:8px;align-items:center}
+.btn-outline{
+  font-size:13px;font-weight:500;color:var(--t-secondary);
+  text-decoration:none;padding:7px 14px;
+  border:1px solid var(--bg-border);border-radius:var(--radius);
+  transition:.15s var(--ease);font-family:var(--f-body);
+}
+.btn-outline:hover{color:var(--t-primary);border-color:var(--bg-hover)}
+.btn-cta{
+  font-size:13px;font-weight:700;color:#080f1e;
+  text-decoration:none;padding:7px 16px;
+  background:var(--lime);border-radius:var(--radius);
+  transition:.15s var(--ease);font-family:var(--f-body);letter-spacing:-.01em;
+}
+.btn-cta:hover{background:#d6f73e;box-shadow:0 0 20px var(--lime-glow)}
+
+/* ── HERO ─────────────────────────────────────────────────────────── */
+.hero{
+  min-height:100vh;display:flex;align-items:center;
+  padding:120px 28px 80px;position:relative;overflow:hidden;
+}
+/* Gradient orb */
+.hero-orb{
+  position:absolute;top:-180px;left:50%;transform:translateX(-50%);
+  width:1000px;height:600px;
+  background:radial-gradient(ellipse at 40% 50%, rgba(43,127,255,0.10) 0%, rgba(93,184,74,0.06) 45%, transparent 70%);
+  pointer-events:none;
+}
+/* Dot grid */
+.hero-dots{
+  position:absolute;inset:0;
+  background-image:radial-gradient(circle, rgba(43,127,255,0.12) 1px, transparent 1px);
+  background-size:36px 36px;
+  mask-image:radial-gradient(ellipse 80% 60% at 50% 30%, black 0%, transparent 100%);
+  pointer-events:none;
+}
+.hero-wrap{
+  max-width:1120px;margin:0 auto;width:100%;
+  display:grid;grid-template-columns:1fr 480px;gap:64px;align-items:center;
+  position:relative;z-index:1;
+}
+.hero-eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--lime-tint);border:1px solid rgba(200,241,53,0.25);
+  color:var(--lime);font-family:var(--f-mono);font-size:10.5px;font-weight:500;
+  letter-spacing:.1em;text-transform:uppercase;
+  padding:5px 12px;border-radius:100px;margin-bottom:24px;
+}
+.hero-eyebrow-dot{
+  width:5px;height:5px;border-radius:50%;background:var(--lime);
+  box-shadow:0 0 6px var(--lime);
+  animation:blink-dot 2s ease-in-out infinite;
+}
+@keyframes blink-dot{0%,100%{opacity:1}50%{opacity:.3}}
+.hero-h1{
+  font-family:var(--f-display);
+  font-size:clamp(44px,5.5vw,78px);
+  font-weight:800;line-height:1.0;letter-spacing:-.04em;
+  margin-bottom:22px;
+}
+.h1-own{color:var(--t-primary)}
+.h1-your{color:var(--t-secondary)}
+.h1-serverless{
+  display:block;
+  background:linear-gradient(135deg, var(--blue) 0%, var(--green) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.h1-period{-webkit-text-fill-color:var(--lime);color:var(--lime)}
+.hero-sub{
+  font-size:17px;color:var(--t-secondary);line-height:1.75;
+  max-width:480px;margin-bottom:36px;font-weight:300;
+}
+.hero-sub strong{color:var(--t-primary);font-weight:500}
+.hero-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.hero-btn-primary{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--lime);color:#080f1e;
+  padding:13px 26px;border-radius:var(--radius-lg);
+  font-size:15px;font-weight:700;text-decoration:none;font-family:var(--f-body);
+  transition:.2s var(--ease);letter-spacing:-.01em;
+}
+.hero-btn-primary:hover{
+  background:#d6f73e;
+  box-shadow:0 0 40px var(--lime-glow),0 4px 20px rgba(200,241,53,.25);
+  transform:translateY(-2px);
+}
+.hero-btn-secondary{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--bg-card);border:1px solid var(--bg-border);color:var(--t-primary);
+  padding:13px 22px;border-radius:var(--radius-lg);
+  font-size:15px;font-weight:500;text-decoration:none;font-family:var(--f-body);
+  transition:.2s var(--ease);
+}
+.hero-btn-secondary:hover{background:var(--bg-raised);border-color:var(--blue);transform:translateY(-2px)}
+.hero-meta{
+  margin-top:20px;display:flex;align-items:center;gap:16px;
+  font-size:12.5px;color:var(--t-muted);font-family:var(--f-mono);
+}
+.hero-meta-star{color:var(--lime)}
+.hero-meta-sep{opacity:.3}
+
+/* ── TERMINAL ───────────────────────────────────────────────────── */
+.terminal{
+  background:var(--bg-deep);
+  border:1px solid var(--bg-border);
+  border-radius:var(--radius-xl);
+  overflow:hidden;
+  box-shadow:
+    0 0 0 1px rgba(43,127,255,.08),
+    0 32px 64px rgba(0,0,0,.5),
+    0 0 80px rgba(43,127,255,.04);
+}
+.t-bar{
+  background:var(--bg-card);border-bottom:1px solid var(--bg-border);
+  padding:11px 16px;display:flex;align-items:center;gap:12px;
+}
+.t-dots{display:flex;gap:6px}
+.t-dot{width:10px;height:10px;border-radius:50%}
+.td-r{background:#ff5f57}.td-a{background:#febc2e}.td-g{background:#28c840}
+.t-title{
+  font-family:var(--f-mono);font-size:11.5px;color:var(--t-muted);
+  flex:1;text-align:center;
+}
+.t-body{
+  padding:22px;font-family:var(--f-mono);font-size:13px;
+  line-height:1.9;min-height:280px;
+}
+.tl{display:flex;align-items:baseline;gap:0;animation:fadein .15s ease both}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.tp{color:var(--lime);margin-right:10px;user-select:none}
+.tc{color:var(--t-primary)}
+.to{color:var(--t-secondary)}
+.ts{color:var(--green-bright)}
+.tu{color:var(--blue-bright);text-decoration:underline}
+.td{color:var(--t-muted)}
+.t-cursor{
+  display:inline-block;width:7px;height:14px;
+  background:var(--lime);vertical-align:middle;margin-left:2px;
+  animation:cursor-blink 1s step-end infinite;
+}
+@keyframes cursor-blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── SCROLLSTRIP ─────────────────────────────────────────────────── */
+.scrollstrip{
+  border-top:1px solid var(--bg-border);
+  border-bottom:1px solid var(--bg-border);
+  padding:20px 0;overflow:hidden;position:relative;
+}
+.scrollstrip::before,.scrollstrip::after{
+  content:'';position:absolute;top:0;bottom:0;width:120px;z-index:2;
+}
+.scrollstrip::before{left:0;background:linear-gradient(90deg,var(--bg-void),transparent)}
+.scrollstrip::after{right:0;background:linear-gradient(-90deg,var(--bg-void),transparent)}
+.ss-label{
+  text-align:center;font-size:11px;color:var(--t-muted);
+  letter-spacing:.12em;text-transform:uppercase;font-family:var(--f-mono);
+  margin-bottom:16px;
+}
+.ss-track{
+  display:flex;gap:56px;align-items:center;
+  animation:ss-scroll 28s linear infinite;width:max-content;
+}
+.ss-track:hover{animation-play-state:paused}
+@keyframes ss-scroll{to{transform:translateX(-50%)}}
+.ss-item{
+  font-family:var(--f-display);font-size:14px;font-weight:600;
+  color:var(--t-muted);white-space:nowrap;
+  display:flex;align-items:center;gap:10px;
+  transition:.15s var(--ease);
+}
+.ss-item:hover{color:var(--t-secondary)}
+
+/* ── SECTION BASE ─────────────────────────────────────────────────── */
+.section{padding:100px 28px}
+.section-alt{background:linear-gradient(to bottom,var(--bg-void),#050c18,var(--bg-void))}
+.label{
+  font-family:var(--f-mono);font-size:10.5px;font-weight:500;
+  color:var(--lime);letter-spacing:.12em;text-transform:uppercase;
+  margin-bottom:14px;
+}
+.h2{
+  font-family:var(--f-display);
+  font-size:clamp(30px,3.2vw,50px);
+  font-weight:800;line-height:1.08;letter-spacing:-.035em;
+  margin-bottom:18px;
+}
+.h2-sub{
+  font-size:17px;color:var(--t-secondary);line-height:1.7;
+  max-width:540px;font-weight:300;
+}
+
+/* ── ERA ──────────────────────────────────────────────────────────── */
+.era-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:2px;margin-top:56px;
+}
+.era-card{
+  background:var(--bg-card);padding:28px 24px;
+  border:1px solid var(--bg-border);
+  transition:.2s var(--ease);
+}
+.era-card:first-child{border-radius:var(--radius-lg) 0 0 var(--radius-lg)}
+.era-card:last-child{border-radius:0 var(--radius-lg) var(--radius-lg) 0}
+.era-card:hover{background:var(--bg-raised)}
+.era-card.now{
+  background:var(--bg-raised);
+  border-color:var(--lime);
+  box-shadow:inset 0 1px 0 rgba(200,241,53,.12),0 0 32px rgba(200,241,53,.04);
+  position:relative;
+}
+.era-card.now::after{
+  content:'Now';position:absolute;top:-9px;right:16px;
+  background:var(--lime);color:#080f1e;
+  font-size:9px;font-weight:700;font-family:var(--f-mono);
+  padding:2px 8px;border-radius:100px;letter-spacing:.06em;text-transform:uppercase;
+}
+.era-era{font-family:var(--f-mono);font-size:10px;color:var(--t-muted);margin-bottom:14px;letter-spacing:.04em}
+.era-name{
+  font-family:var(--f-display);font-size:17px;font-weight:700;
+  letter-spacing:-.02em;margin-bottom:10px;
+}
+.era-card.now .era-name{color:var(--lime)}
+.era-desc{font-size:13px;color:var(--t-secondary);line-height:1.6;margin-bottom:18px}
+.bars{display:flex;flex-direction:column;gap:6px}
+.bar-row{
+  display:flex;align-items:center;gap:8px;
+  font-family:var(--f-mono);font-size:10px;color:var(--t-muted);
+}
+.bar-lbl{width:68px;text-align:right;flex-shrink:0}
+.bar-track{flex:1;height:3px;background:var(--bg-border);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width 1.2s cubic-bezier(0.4,0,0.2,1)}
+.bf-blue{background:var(--blue)}
+.bf-green{background:var(--green)}
+.bf-lime{background:var(--lime)}
+
+/* ── PROBLEM ──────────────────────────────────────────────────────── */
+.problem-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:72px;align-items:center;margin-top:56px;
+}
+.prob-cards{display:flex;flex-direction:column;gap:14px}
+.prob-card{
+  display:flex;gap:14px;align-items:flex-start;
+  padding:18px;background:var(--bg-card);border:1px solid var(--bg-border);
+  border-radius:var(--radius-lg);transition:.2s var(--ease);
+}
+.prob-card:hover{border-color:rgba(255,60,60,.2);background:var(--bg-raised)}
+.prob-icon{
+  width:34px;height:34px;flex-shrink:0;border-radius:var(--radius);
+  background:rgba(255,50,50,.08);border:1px solid rgba(255,50,50,.16);
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+}
+.prob-ttl{
+  font-family:var(--f-display);font-size:14.5px;font-weight:700;
+  letter-spacing:-.015em;margin-bottom:3px;
+}
+.prob-body{font-size:13px;color:var(--t-secondary);line-height:1.6}
+
+/* Lock visual */
+.lock-viz{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:8px;
+  background:var(--bg-card);border:1px solid var(--bg-border);
+  border-radius:var(--radius-xl);
+}
+.lock-node{
+  background:var(--bg-deep);border:1px solid var(--bg-border);
+  border-radius:var(--radius-lg);padding:18px 12px;text-align:center;
+  position:relative;transition:.2s var(--ease);
+}
+.lock-node.locked{border-color:rgba(255,60,60,.2);background:rgba(255,20,20,.03)}
+.lock-node.locked::after{content:'🔒';position:absolute;top:-7px;right:-7px;font-size:12px}
+.lock-ico{font-size:22px;margin-bottom:6px}
+.lock-nm{font-family:var(--f-mono);font-size:10px;color:var(--t-muted)}
+.lock-node.locked .lock-nm{color:rgba(255,80,80,.5)}
+.lock-center{
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;color:rgba(255,80,80,.3);
+}
+.lock-caption{
+  text-align:center;font-family:var(--f-mono);font-size:11px;
+  color:rgba(255,60,60,.4);padding:12px;grid-column:1/-1;
+}
+
+/* ── SOLUTION CARDS ──────────────────────────────────────────────── */
+.sol-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:2px;margin-top:56px;
+}
+.sol-card{
+  background:var(--bg-card);padding:34px 28px;
+  border:1px solid var(--bg-border);
+  transition:.2s var(--ease);position:relative;overflow:hidden;
+}
+.sol-card:first-child{border-radius:var(--radius-lg) 0 0 var(--radius-lg)}
+.sol-card:last-child{border-radius:0 var(--radius-lg) var(--radius-lg) 0}
+.sol-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  opacity:0;transition:.2s var(--ease);
+}
+.sol-card.sc-blue::before{background:linear-gradient(90deg,var(--blue),transparent)}
+.sol-card.sc-green::before{background:linear-gradient(90deg,var(--green),transparent)}
+.sol-card.sc-lime::before{background:linear-gradient(90deg,var(--lime),transparent)}
+.sol-card:hover{background:var(--bg-raised);border-color:var(--bg-hover)}
+.sol-card:hover::before{opacity:1}
+.sol-ico{
+  width:44px;height:44px;border-radius:var(--radius);
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;margin-bottom:18px;border:1px solid;
+}
+.sc-blue .sol-ico{background:var(--blue-tint);border-color:rgba(43,127,255,.2)}
+.sc-green .sol-ico{background:var(--green-tint);border-color:rgba(93,184,74,.2)}
+.sc-lime .sol-ico{background:var(--lime-tint);border-color:rgba(200,241,53,.2)}
+.sol-ttl{font-family:var(--f-display);font-size:19px;font-weight:700;letter-spacing:-.025em;margin-bottom:10px}
+.sol-body{font-size:13.5px;color:var(--t-secondary);line-height:1.7}
+
+/* ── HOW IT WORKS ────────────────────────────────────────────────── */
+.how-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:72px;align-items:start;margin-top:56px;
+}
+.how-steps{display:flex;flex-direction:column}
+.how-step{
+  display:flex;gap:18px;padding:22px 0;
+  border-bottom:1px solid var(--bg-border);cursor:pointer;
+}
+.how-step:last-child{border-bottom:none}
+.how-num{
+  width:30px;height:30px;flex-shrink:0;border-radius:var(--radius);
+  background:var(--bg-card);border:1px solid var(--bg-border);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-mono);font-size:11px;color:var(--t-muted);
+  transition:.2s var(--ease);
+}
+.how-step.active .how-num{
+  background:var(--lime);border-color:var(--lime);color:#080f1e;font-weight:700;
+}
+.how-step-ttl{
+  font-family:var(--f-display);font-size:16px;font-weight:700;
+  letter-spacing:-.02em;margin-bottom:5px;transition:.15s var(--ease);
+}
+.how-step.active .how-step-ttl{color:var(--lime)}
+.how-step:hover .how-step-ttl{color:var(--t-primary)}
+.how-step-body{font-size:13.5px;color:var(--t-secondary);line-height:1.6}
+.how-terminal{position:sticky;top:88px}
+
+/* ── FEATURE GRID ─────────────────────────────────────────────────── */
+.feat-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:1px;background:var(--bg-border);
+  border:1px solid var(--bg-border);border-radius:var(--radius-xl);
+  overflow:hidden;margin-top:56px;
+}
+.feat-cell{
+  background:var(--bg-deep);padding:32px 28px;
+  transition:.2s var(--ease);
+}
+.feat-cell:hover{background:var(--bg-card)}
+.feat-cell.feat-star{
+  background:var(--bg-card);
+  outline:2px solid var(--lime);outline-offset:-2px;
+}
+.feat-ico{
+  width:40px;height:40px;background:var(--bg-raised);border:1px solid var(--bg-border);
+  border-radius:var(--radius);display:flex;align-items:center;justify-content:center;
+  font-size:18px;margin-bottom:16px;
+}
+.feat-ttl{font-family:var(--f-display);font-size:15px;font-weight:700;letter-spacing:-.02em;margin-bottom:7px}
+.feat-body{font-size:13px;color:var(--t-secondary);line-height:1.6}
+.feat-tag{
+  display:inline-block;margin-top:10px;font-family:var(--f-mono);
+  font-size:9.5px;padding:2px 8px;border-radius:100px;
+  font-weight:500;letter-spacing:.05em;text-transform:uppercase;border:1px solid;
+}
+.tag-oss{background:var(--green-tint);color:var(--green-bright);border-color:rgba(93,184,74,.2)}
+.tag-cloud{background:var(--blue-tint);color:var(--blue-bright);border-color:rgba(43,127,255,.2)}
+.tag-both{background:var(--lime-tint);color:var(--lime);border-color:rgba(200,241,53,.2)}
+
+/* ── OSS vs CLOUD ─────────────────────────────────────────────────── */
+.split-wrap{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:2px;border:1px solid var(--bg-border);
+  border-radius:var(--radius-xl);overflow:hidden;margin-top:56px;
+}
+.split-col{background:var(--bg-card);padding:44px 40px}
+.split-col.cloud{background:var(--bg-raised);position:relative}
+.split-col.cloud::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--blue) 0%,var(--green) 50%,var(--lime) 100%);
+}
+.split-badge{
+  display:inline-flex;align-items:center;gap:7px;
+  font-family:var(--f-mono);font-size:10px;font-weight:600;
+  padding:5px 11px;border-radius:100px;
+  letter-spacing:.07em;text-transform:uppercase;margin-bottom:20px;border:1px solid;
+}
+.sb-oss{background:var(--green-tint);color:var(--green-bright);border-color:rgba(93,184,74,.25)}
+.sb-cloud{background:var(--blue-tint);color:var(--blue-bright);border-color:rgba(43,127,255,.25)}
+.split-ttl{font-family:var(--f-display);font-size:26px;font-weight:800;letter-spacing:-.03em;margin-bottom:6px}
+.split-domain{font-family:var(--f-mono);font-size:12px;color:var(--t-muted);margin-bottom:26px}
+.split-feats{display:flex;flex-direction:column;gap:11px;margin-bottom:32px}
+.sf{
+  display:flex;align-items:center;gap:10px;
+  font-size:13.5px;color:var(--t-secondary);
+}
+.sf-check{
+  width:16px;height:16px;flex-shrink:0;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+}
+.oss .sf-check{background:var(--green-tint);border:1px solid rgba(93,184,74,.25)}
+.cloud .sf-check{background:var(--blue-tint);border:1px solid rgba(43,127,255,.25)}
+.sf-check::after{content:'✓';font-size:9px;font-weight:700}
+.oss .sf-check::after{color:var(--green-bright)}
+.cloud .sf-check::after{color:var(--blue-bright)}
+.split-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:12px 22px;border-radius:var(--radius-lg);
+  font-size:14px;font-weight:600;text-decoration:none;font-family:var(--f-body);
+  transition:.2s var(--ease);border:1px solid;
+}
+.sb-link-oss{background:var(--green-tint);border-color:rgba(93,184,74,.25);color:var(--green-bright)}
+.sb-link-oss:hover{background:rgba(93,184,74,.15);border-color:var(--green-bright)}
+.sb-link-cloud{background:var(--lime);border-color:var(--lime);color:#080f1e}
+.sb-link-cloud:hover{background:#d6f73e;box-shadow:0 0 28px var(--lime-glow);transform:translateY(-1px)}
+
+/* ── CTA FINAL ─────────────────────────────────────────────────────── */
+.cta-section{
+  padding:120px 28px;text-align:center;position:relative;overflow:hidden;
+}
+.cta-halo{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:700px;height:350px;
+  background:radial-gradient(ellipse,rgba(200,241,53,.05) 0%,rgba(43,127,255,.04) 40%,transparent 70%);
+  pointer-events:none;
+}
+.cta-cmd{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--bg-card);border:1px solid var(--bg-border);
+  padding:11px 20px;border-radius:var(--radius-lg);
+  font-family:var(--f-mono);font-size:13.5px;margin-bottom:40px;
+}
+.cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+
+/* ── FOOTER ─────────────────────────────────────────────────────────── */
+footer{
+  border-top:1px solid var(--bg-border);padding:36px 28px;
+}
+.foot-wrap{
+  max-width:1120px;margin:0 auto;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.foot-copy{font-family:var(--f-mono);font-size:12px;color:var(--t-muted)}
+.foot-links{display:flex;gap:20px}
+.foot-links a{font-size:12.5px;color:var(--t-muted);text-decoration:none;transition:.15s var(--ease)}
+.foot-links a:hover{color:var(--t-secondary)}
+
+/* ── SCROLL ANIMATION ─────────────────────────────────────────────── */
+.reveal{opacity:0;transform:translateY(28px);transition:.65s var(--ease)}
+.reveal.in{opacity:1;transform:none}
+.d1{transition-delay:.1s}.d2{transition-delay:.2s}.d3{transition-delay:.3s}
+
+/* ── RESPONSIVE ──────────────────────────────────────────────────────── */
+@media(max-width:960px){
+  .hero-wrap,.problem-grid,.how-grid,.split-wrap{grid-template-columns:1fr}
+  .era-grid,.sol-grid,.feat-grid{grid-template-columns:1fr}
+  .era-card:first-child,.era-card:last-child,
+  .sol-card:first-child,.sol-card:last-child{border-radius:var(--radius-lg)}
+  .nav-links{display:none}
+  .how-terminal{position:static}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <div class="nav-wrap">
+    <a href="/" class="logo">
+      <svg class="logo-mark" viewBox="0 0 32 36" fill="none">
+        <defs>
+          <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#5DB84A"/>
+            <stop offset="100%" stop-color="#2B7FFF"/>
+          </linearGradient>
+          <linearGradient id="lg2" x1="1" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#1660d8"/>
+            <stop offset="100%" stop-color="#0a1628"/>
+          </linearGradient>
+        </defs>
+        <path d="M16 1L2 7v11c0 8.5 6 15.5 14 17.5C24 33.5 30 26.5 30 18V7L16 1z" fill="url(#lg1)"/>
+        <path d="M16 1v34.5C24 33.5 30 26.5 30 18V7L16 1z" fill="url(#lg2)" opacity=".6"/>
+        <!-- cloud+circuit -->
+        <g transform="translate(6,9)">
+          <path d="M10 14H5.5A3.5 3.5 0 014.8 7.2 5.5 5.5 0 0115 8.5h.5a3.5 3.5 0 010 7H10z" fill="white" opacity=".95"/>
+          <circle cx="5" cy="9.5" r="1.1" fill="white"/>
+          <circle cx="11" cy="7" r="1.1" fill="white"/>
+          <circle cx="15.5" cy="9.5" r="1.1" fill="white"/>
+          <line x1="10" y1="14" x2="10" y2="18" stroke="white" stroke-width="1.4" stroke-linecap="round"/>
+          <line x1="6.5" y1="18" x2="13.5" y2="18" stroke="white" stroke-width="1.4" stroke-linecap="round"/>
+          <circle cx="6.5" cy="18" r="1.1" fill="white"/>
+          <circle cx="13.5" cy="18" r="1.1" fill="white"/>
+        </g>
+      </svg>
+      <span class="logo-name">Sovereignly</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#open-source">Open Source</a></li>
+      <li><a href="https://docs.sovereignly.org">Docs</a></li>
+    </ul>
+    <div class="nav-end">
+      <a href="https://github.com/Metacognixion-labs/Sovereignly" class="btn-outline">☆ GitHub</a>
+      <a href="https://app.sovereignly.io" class="btn-cta">Get Started →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-orb"></div>
+  <div class="hero-dots"></div>
+  <div class="hero-wrap">
+
+    <div>
+      <div class="hero-eyebrow"><span class="hero-eyebrow-dot"></span>Sovereign Infrastructure</div>
+      <h1 class="hero-h1">
+        <span class="h1-own">Own</span> <span class="h1-your">your</span>
+        <span class="h1-serverless">serverless<span class="h1-period">.</span></span>
+      </h1>
+      <p class="hero-sub">
+        Deploy serverless functions <strong>anywhere</strong> — local, self-hosted, or global cloud.
+        No lock-in. No vendor tax. Full control, full convenience.
+      </p>
+      <div class="hero-actions">
+        <a href="#install" class="hero-btn-primary">Install CLI →</a>
+        <a href="https://github.com/Metacognixion-labs/Sovereignly" class="hero-btn-secondary">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View GitHub
+        </a>
+      </div>
+      <div class="hero-meta">
+        <span><span class="hero-meta-star">★</span> 4.8k GitHub stars</span>
+        <span class="hero-meta-sep">·</span>
+        <span>MIT License</span>
+        <span class="hero-meta-sep">·</span>
+        <span>v1.0.0</span>
+      </div>
+    </div>
+
+    <div class="terminal" id="hero-term">
+      <div class="t-bar">
+        <div class="t-dots"><div class="t-dot td-r"></div><div class="t-dot td-a"></div><div class="t-dot td-g"></div></div>
+        <div class="t-title">sovereignly — zsh</div>
+      </div>
+      <div class="t-body" id="term-out"></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- SCROLL STRIP -->
+<div class="scrollstrip">
+  <p class="ss-label">Deploy to anything</p>
+  <div class="ss-track">
+    <span class="ss-item">⚡ AWS Lambda</span><span class="ss-item">☁ Cloudflare Workers</span>
+    <span class="ss-item">🚀 Fly.io</span><span class="ss-item">🐳 Docker</span>
+    <span class="ss-item">🖥 Bare Metal</span><span class="ss-item">🔷 Azure Functions</span>
+    <span class="ss-item">🌊 DigitalOcean</span><span class="ss-item">📦 Kubernetes</span>
+    <span class="ss-item">🏠 Self-Hosted</span><span class="ss-item">🌍 Edge CDN</span>
+    <!-- duplicate -->
+    <span class="ss-item">⚡ AWS Lambda</span><span class="ss-item">☁ Cloudflare Workers</span>
+    <span class="ss-item">🚀 Fly.io</span><span class="ss-item">🐳 Docker</span>
+    <span class="ss-item">🖥 Bare Metal</span><span class="ss-item">🔷 Azure Functions</span>
+    <span class="ss-item">🌊 DigitalOcean</span><span class="ss-item">📦 Kubernetes</span>
+    <span class="ss-item">🏠 Self-Hosted</span><span class="ss-item">🌍 Edge CDN</span>
+  </div>
+</div>
+
+<!-- ERA -->
+<section class="section reveal" id="why">
+  <div class="wrap">
+    <div class="label">The Infrastructure Shift</div>
+    <h2 class="h2">The fourth era is sovereign.</h2>
+    <p class="h2-sub">Every decade brings a new control/convenience tradeoff. We built the first era where you don't choose.</p>
+    <div class="era-grid">
+      <div class="era-card reveal d1">
+        <div class="era-era">Era 01</div>
+        <div class="era-name">Servers</div>
+        <div class="era-desc">Full control, full ops burden. You owned everything — including the 3am alerts.</div>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-lbl">control</span><div class="bar-track"><div class="bar-fill bf-blue" style="width:94%"></div></div></div>
+          <div class="bar-row"><span class="bar-lbl">DX</span><div class="bar-track"><div class="bar-fill bf-green" style="width:12%"></div></div></div>
+        </div>
+      </div>
+      <div class="era-card reveal d2">
+        <div class="era-era">Era 02</div>
+        <div class="era-name">Cloud</div>
+        <div class="era-desc">Better DX, managed infra. You traded ownership for reliability. Lock-in started here.</div>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-lbl">control</span><div class="bar-track"><div class="bar-fill bf-blue" style="width:54%"></div></div></div>
+          <div class="bar-row"><span class="bar-lbl">DX</span><div class="bar-track"><div class="bar-fill bf-green" style="width:70%"></div></div></div>
+        </div>
+      </div>
+      <div class="era-card reveal d3">
+        <div class="era-era">Era 03</div>
+        <div class="era-name">Serverless</div>
+        <div class="era-desc">Zero ops. Maximum convenience. But you surrendered control entirely. No exit ramp.</div>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-lbl">control</span><div class="bar-track"><div class="bar-fill bf-blue" style="width:16%"></div></div></div>
+          <div class="bar-row"><span class="bar-lbl">DX</span><div class="bar-track"><div class="bar-fill bf-green" style="width:91%"></div></div></div>
+        </div>
+      </div>
+      <div class="era-card now reveal d3">
+        <div class="era-era">Era 04</div>
+        <div class="era-name">Sovereign</div>
+        <div class="era-desc">Deploy anywhere. Migrate freely. Open runtime. Control high, convenience high — both.</div>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-lbl">control</span><div class="bar-track"><div class="bar-fill bf-lime" style="width:95%"></div></div></div>
+          <div class="bar-row"><span class="bar-lbl">DX</span><div class="bar-track"><div class="bar-fill bf-lime" style="width:92%"></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROBLEM -->
+<section class="section section-alt">
+  <div class="wrap">
+    <div class="problem-grid">
+      <div class="reveal">
+        <div class="label">The Problem</div>
+        <h2 class="h2">Serverless shouldn't mean surrendering control.</h2>
+        <p class="h2-sub" style="margin-bottom:36px">Vendor lock-in is the hidden tax. Proprietary runtimes, cold-start penalties, and data you can't export — the bill comes due when you try to leave.</p>
+        <div class="prob-cards">
+          <div class="prob-card">
+            <div class="prob-icon">🔒</div>
+            <div>
+              <div class="prob-ttl">Proprietary runtimes</div>
+              <div class="prob-body">Your functions only run on their infra. Migrating means rewriting from scratch.</div>
+            </div>
+          </div>
+          <div class="prob-card">
+            <div class="prob-icon">💸</div>
+            <div>
+              <div class="prob-ttl">Pricing held hostage</div>
+              <div class="prob-body">Cold starts, egress fees, concurrency limits. The model only makes sense until you scale.</div>
+            </div>
+          </div>
+          <div class="prob-card">
+            <div class="prob-icon">🚧</div>
+            <div>
+              <div class="prob-ttl">No local parity</div>
+              <div class="prob-body">Cloud functions behave differently in prod. You find out at the worst possible moment.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="reveal d2">
+        <div class="lock-viz">
+          <div class="lock-node locked"><div class="lock-ico">λ</div><div class="lock-nm">AWS Lambda</div></div>
+          <div class="lock-center">⛓</div>
+          <div class="lock-node locked"><div class="lock-ico">▲</div><div class="lock-nm">Vercel</div></div>
+          <div class="lock-center">⛓</div>
+          <div class="lock-node locked" style="grid-column:2"><div class="lock-ico">☁</div><div class="lock-nm">Cloud Run</div></div>
+          <div class="lock-center">⛓</div>
+          <div class="lock-node locked"><div class="lock-ico">🌊</div><div class="lock-nm">Netlify</div></div>
+          <div class="lock-center">⛓</div>
+          <div class="lock-node locked"><div class="lock-ico">⚡</div><div class="lock-nm">Deno Deploy</div></div>
+          <div class="lock-caption">Your code is theirs to keep</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOLUTION -->
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="label">The Solution</div>
+      <h2 class="h2">Infrastructure sovereignty,<br>finally built.</h2>
+    </div>
+    <div class="sol-grid">
+      <div class="sol-card sc-blue reveal d1">
+        <div class="sol-ico">🌍</div>
+        <div class="sol-ttl">Deploy anywhere</div>
+        <div class="sol-body">One runtime. Any target. AWS, GCP, Fly.io, your basement server, a Raspberry Pi. Write once, deploy anywhere — literally.</div>
+      </div>
+      <div class="sol-card sc-green reveal d2">
+        <div class="sol-ico">🔓</div>
+        <div class="sol-ttl">Cloud optional</div>
+        <div class="sol-body">Full production capability with zero cloud dependency. Self-host with Docker in minutes. Switch providers in seconds. No exit fees, ever.</div>
+      </div>
+      <div class="sol-card sc-lime reveal d3">
+        <div class="sol-ico">⚡</div>
+        <div class="sol-ttl">Open runtime</div>
+        <div class="sol-body">MIT-licensed runtime you can read, fork, and extend. No black box. No vendor-specific primitives. Functions that just run.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section section-alt" id="how">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="label">Time to first deploy: &lt; 60 seconds</div>
+      <h2 class="h2">Three commands.<br>You're sovereign.</h2>
+    </div>
+    <div class="how-grid">
+      <div class="how-steps reveal d1">
+        <div class="how-step active" data-step="0">
+          <div class="how-num">01</div>
+          <div>
+            <div class="how-step-ttl">Install the CLI</div>
+            <div class="how-step-body">One npm install. The CLI is your control plane — deploy, logs, secrets, and scale from your terminal.</div>
+          </div>
+        </div>
+        <div class="how-step" data-step="1">
+          <div class="how-num">02</div>
+          <div>
+            <div class="how-step-ttl">Initialize your project</div>
+            <div class="how-step-body">Scaffold a sovereign function with built-in config for any target. Local dev starts with hot reload.</div>
+          </div>
+        </div>
+        <div class="how-step" data-step="2">
+          <div class="how-num">03</div>
+          <div>
+            <div class="how-step-ttl">Deploy to any target</div>
+            <div class="how-step-body">Point at local, Docker, cloud, or edge. One command. Live endpoint in seconds.</div>
+          </div>
+        </div>
+        <div class="how-step" data-step="3">
+          <div class="how-num">04</div>
+          <div>
+            <div class="how-step-ttl">Observe &amp; scale</div>
+            <div class="how-step-body">Real-time logs, metrics, traces. Scale to zero or infinity — you control the rules.</div>
+          </div>
+        </div>
+      </div>
+      <div class="how-terminal reveal d2">
+        <div class="terminal">
+          <div class="t-bar">
+            <div class="t-dots"><div class="t-dot td-r"></div><div class="t-dot td-a"></div><div class="t-dot td-g"></div></div>
+            <div class="t-title">sovereignly deploy</div>
+          </div>
+          <div class="t-body" style="min-height:340px">
+            <div class="tl"><span class="tp">$</span><span class="tc"> npm install -g sovereignly</span></div>
+            <div class="tl" style="margin-bottom:6px"><span class="ts">✓ sovereignly@1.0.0 installed</span></div>
+            <div class="tl"><span class="tp">$</span><span class="tc"> sovereignly init my-api</span></div>
+            <div class="tl"><span class="to">  ✓ Scaffolded my-api/</span></div>
+            <div class="tl" style="margin-bottom:6px"><span class="ts">  ✓ Local dev ready → localhost:3000</span></div>
+            <div class="tl"><span class="tp">$</span><span class="tc"> sovereignly deploy</span></div>
+            <div class="tl"><span class="to">  Building function bundle...</span></div>
+            <div class="tl"><span class="to">  Pushing to <span class="ts">fly.io/sovereignly</span>...</span></div>
+            <div class="tl"><span class="to">  Allocating edge nodes...</span></div>
+            <div class="tl" style="margin-bottom:6px"><span class="ts">  ✓ Deployed in 4.2s</span></div>
+            <div class="tl"><span class="td">  Endpoint  </span><span class="tu">https://my-api.sovereignly.fly.dev</span></div>
+            <div class="tl"><span class="td">  Logs      </span><span class="tc">sovereignly logs --follow</span></div>
+            <div class="tl"><span class="td">  Scale     </span><span class="tc">sovereignly scale --min 0 --max 10</span></div>
+            <div class="tl" style="margin-top:6px"><span class="tp">$</span> <span class="t-cursor"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section">
+  <div class="wrap reveal">
+    <div class="label">Platform Capabilities</div>
+    <h2 class="h2">Everything you need.<br>Nothing you don't.</h2>
+    <div class="feat-grid">
+      <div class="feat-cell">
+        <div class="feat-ico">🚀</div>
+        <div class="feat-ttl">Portable Runtime</div>
+        <div class="feat-body">Single binary runs identically on every target. Local dev is production parity, always.</div>
+        <span class="feat-tag tag-oss">Open Source</span>
+      </div>
+      <div class="feat-cell">
+        <div class="feat-ico">🔒</div>
+        <div class="feat-ttl">Secrets Management</div>
+        <div class="feat-body">Encrypted secrets at rest and in transit. <code style="font-family:var(--f-mono);font-size:11px;color:var(--lime)">sovereignly secrets set</code> — done.</div>
+        <span class="feat-tag tag-both">All Plans</span>
+      </div>
+      <div class="feat-cell">
+        <div class="feat-ico">📊</div>
+        <div class="feat-ttl">Observability</div>
+        <div class="feat-body">Real-time logs, function metrics, cold start traces. Know exactly what's happening.</div>
+        <span class="feat-tag tag-cloud">Cloud</span>
+      </div>
+      <div class="feat-cell">
+        <div class="feat-ico">⚡</div>
+        <div class="feat-ttl">Edge Deployment</div>
+        <div class="feat-body">Deploy to global edge with one command. Sub-50ms cold starts. Auto-scale to zero.</div>
+        <span class="feat-tag tag-cloud">Cloud</span>
+      </div>
+      <div class="feat-cell feat-star">
+        <div class="feat-ico">🔄</div>
+        <div class="feat-ttl">Zero-Downtime Migration</div>
+        <div class="feat-body">Move from AWS to self-host to Fly.io and back. No rewrite. No downtime. Change your mind.</div>
+        <span class="feat-tag tag-both">Core Feature</span>
+      </div>
+      <div class="feat-cell">
+        <div class="feat-ico">🤖</div>
+        <div class="feat-ttl">AI-Native</div>
+        <div class="feat-body">Claude-powered function scaffolding. Generate, test, deploy with natural language.</div>
+        <span class="feat-tag tag-cloud">Cloud</span>
+      </div>
+      <div class="feat-cell">
+        <div class="feat-ico">🐳</div>
+        <div class="feat-ttl">Docker Self-Host</div>
+        <div class="feat-body">Full production runtime in a single image. <code style="font-family:var(--f-mono);font-size:11px;color:var(--lime)">docker run sovereignly</code> and you're live.</div>
+        <span class="feat-tag tag-oss">Open Source</span>
+      </div>
+      <div class="feat-cell">
+        <div class="feat-ico">🧩</div>
+        <div class="feat-ttl">Plugin Ecosystem</div>
+        <div class="feat-body">sovereignly-plugin-auth, postgres, stripe. Extend the runtime without vendor dependency.</div>
+        <span class="feat-tag tag-both">All Plans</span>
+      </div>
+      <div class="feat-cell">
+        <div class="feat-ico">👥</div>
+        <div class="feat-ttl">Teams &amp; RBAC</div>
+        <div class="feat-body">Role-based access, project isolation, audit logs. Enterprise compliance, reasonable price.</div>
+        <span class="feat-tag tag-cloud">Cloud</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- OPEN SOURCE vs CLOUD -->
+<section class="section section-alt" id="open-source">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="label">Choose your model</div>
+      <h2 class="h2">Open source at the core.<br>Cloud when you want it.</h2>
+    </div>
+    <div class="split-wrap reveal d1">
+      <div class="split-col oss">
+        <div class="split-badge sb-oss">⊕ Open Source</div>
+        <div class="split-ttl">Sovereignly Core</div>
+        <div class="split-domain">sovereignly.org · MIT License</div>
+        <div class="split-feats">
+          <div class="sf"><div class="sf-check"></div>Portable runtime binary</div>
+          <div class="sf"><div class="sf-check"></div>Full CLI — init, deploy, logs, scale</div>
+          <div class="sf"><div class="sf-check"></div>Docker self-host support</div>
+          <div class="sf"><div class="sf-check"></div>Templates &amp; examples</div>
+          <div class="sf"><div class="sf-check"></div>Plugin system</div>
+          <div class="sf"><div class="sf-check"></div>Local dev with hot reload</div>
+        </div>
+        <a href="https://github.com/Metacognixion-labs/Sovereignly" class="split-btn sb-link-oss">
+          View on GitHub →
+        </a>
+      </div>
+      <div class="split-col cloud">
+        <div class="split-badge sb-cloud">⚡ Cloud</div>
+        <div class="split-ttl">Sovereignly Cloud</div>
+        <div class="split-domain">sovereignly.io · Free tier available</div>
+        <div class="split-feats">
+          <div class="sf"><div class="sf-check"></div>Everything in Core</div>
+          <div class="sf"><div class="sf-check"></div>Global edge deployment</div>
+          <div class="sf"><div class="sf-check"></div>Managed autoscaling</div>
+          <div class="sf"><div class="sf-check"></div>Full observability dashboard</div>
+          <div class="sf"><div class="sf-check"></div>Teams &amp; RBAC</div>
+          <div class="sf"><div class="sf-check"></div>AI function generation</div>
+        </div>
+        <a href="https://app.sovereignly.io" class="split-btn sb-link-cloud">
+          Start for free →
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="cta-section" id="install">
+  <div class="cta-halo"></div>
+  <div class="wrap reveal" style="position:relative;z-index:1">
+    <div class="label" style="justify-content:center;display:flex">Start now</div>
+    <h2 class="h2" style="text-align:center;max-width:560px;margin:0 auto 18px">Start deploying<br>in 60 seconds.</h2>
+    <p class="h2-sub" style="text-align:center;max-width:420px;margin:0 auto 36px">No account needed for local deploy. No credit card. No lock-in. Just functions that run.</p>
+    <div style="display:flex;justify-content:center;margin-bottom:40px">
+      <div class="cta-cmd">
+        <span class="tp">$</span>
+        <span style="color:var(--t-primary)">npm install -g sovereignly</span>
+        <span class="t-cursor"></span>
+      </div>
+    </div>
+    <div class="cta-actions">
+      <a href="https://app.sovereignly.io" class="hero-btn-primary">Get Started Free →</a>
+      <a href="https://docs.sovereignly.org" class="hero-btn-secondary">Read the Docs</a>
+      <a href="https://github.com/Metacognixion-labs/Sovereignly" class="hero-btn-secondary">☆ Star on GitHub</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="foot-wrap">
+    <span class="foot-copy">© 2026 Sovereignly · Own your serverless.</span>
+    <div class="foot-links">
+      <a href="https://docs.sovereignly.org">Docs</a>
+      <a href="https://github.com/Metacognixion-labs/Sovereignly">GitHub</a>
+      <a href="https://sovereignly.org">Open Source</a>
+      <a href="https://app.sovereignly.io">Console</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* Nav scroll */
+const nav = document.getElementById('nav');
+addEventListener('scroll', () => nav.classList.toggle('stuck', scrollY > 16));
+
+/* Terminal typewriter */
+const out = document.getElementById('term-out');
+const script = [
+  {d:300,  type:'cmd',    t:' npm install -g sovereignly'},
+  {d:900,  type:'output', t:'  added 1 package in 0.9s'},
+  {d:1200, type:'success',t:'  ✓ sovereignly@1.0.0 installed'},
+  {d:1800, type:'cmd',    t:' sovereignly init my-api'},
+  {d:2200, type:'output', t:'  ✓ Scaffolded my-api/'},
+  {d:2500, type:'success',t:'  ✓ Runtime configured'},
+  {d:2800, type:'success',t:'  ✓ Local dev ready'},
+  {d:3400, type:'cmd',    t:' sovereignly deploy'},
+  {d:3800, type:'output', t:'  Building...'},
+  {d:4200, type:'output', t:'  Pushing to edge...'},
+  {d:4700, type:'success',t:'  ✓ Deployed in 3.8s'},
+  {d:5000, type:'url',    t:'  → https://my-api.sovereignly.fly.dev'},
+  {d:5400, type:'cursor'},
+];
+script.forEach(({d, type, t}) => {
+  setTimeout(() => {
+    const el = document.createElement('div');
+    el.className = 'tl';
+    if (type === 'cmd')     el.innerHTML = `<span class="tp">$</span><span class="tc">${t}</span>`;
+    else if (type === 'success') el.innerHTML = `<span class="ts">${t}</span>`;
+    else if (type === 'url')     el.innerHTML = `<span class="tu">${t}</span>`;
+    else if (type === 'cursor')  el.innerHTML = `<span class="tp">$</span> <span class="t-cursor"></span>`;
+    else                    el.innerHTML = `<span class="to">${t}</span>`;
+    out.appendChild(el);
+    out.scrollTop = out.scrollHeight;
+  }, d);
+});
+
+/* Scroll reveals */
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('in'); });
+}, {threshold: 0.12});
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+/* How-it-works tabs */
+document.querySelectorAll('.how-step').forEach(s => {
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.how-step').forEach(x => x.classList.remove('active'));
+    s.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

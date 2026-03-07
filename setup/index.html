@@ -1,0 +1,2208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sovereignly — Deploy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --ink:#09090a;--paper:#0d0d0f;--lift:#131316;--raised:#18181c;--rim:#222228;
+  --rim2:#2a2a32;--lime:#c8f135;--lime2:rgba(200,241,53,.08);--lime3:rgba(200,241,53,.15);
+  --amber:#f5a623;--amber2:rgba(245,166,35,.1);--red:#f04040;--red2:rgba(240,64,64,.08);
+  --blue:#4e9eff;--blue2:rgba(78,158,255,.08);--green:#3ddc84;--green2:rgba(61,220,132,.08);
+  --white:#f0f0f2;--muted:#4a4a56;--dim:#2a2a32;
+  --syne:'Syne',sans-serif;--mono:'JetBrains Mono',monospace;--serif:'Instrument Serif',serif;
+}
+
+html,body{height:100%;background:var(--ink);color:var(--white);font-family:var(--syne);overflow-x:hidden}
+
+/* ── Noise texture overlay ── */
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  background-size:200px;opacity:.5;pointer-events:none;z-index:0;
+}
+
+/* ── App shell ── */
+#app{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column}
+
+/* ── Header ── */
+header{
+  display:flex;align-items:center;padding:20px 32px;
+  border-bottom:1px solid var(--rim);background:rgba(13,13,15,.8);
+  backdrop-filter:blur(12px);position:sticky;top:0;z-index:100;
+  gap:20px;
+}
+.logo{
+  font-family:var(--syne);font-size:16px;font-weight:800;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--lime);
+  text-shadow:0 0 30px rgba(200,241,53,.3);
+  display:flex;align-items:center;gap:10px;
+}
+.logo-mark{
+  width:32px;height:32px;border:2px solid var(--lime);border-radius:7px;
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+  box-shadow:0 0 16px rgba(200,241,53,.2),inset 0 0 12px rgba(200,241,53,.05);
+  flex-shrink:0;
+}
+.version{
+  font-family:var(--mono);font-size:10px;font-weight:400;color:var(--muted);
+  background:var(--lift);border:1px solid var(--rim);border-radius:3px;
+  padding:2px 8px;letter-spacing:.05em;
+}
+.step-trail{
+  margin-left:auto;display:flex;align-items:center;gap:6px;
+}
+.step-pill{
+  display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;
+  font-family:var(--mono);font-size:10px;font-weight:500;cursor:pointer;
+  transition:all .2s;border:1px solid var(--rim);color:var(--muted);letter-spacing:.05em;
+}
+.step-pill.done{border-color:rgba(200,241,53,.3);color:var(--lime);background:var(--lime2)}
+.step-pill.active{border-color:rgba(200,241,53,.5);color:var(--lime);background:var(--lime3);
+  box-shadow:0 0 12px rgba(200,241,53,.1)}
+.step-num{
+  width:16px;height:16px;border-radius:50%;background:var(--rim);
+  display:flex;align-items:center;justify-content:center;font-size:9px;
+}
+.step-pill.done .step-num{background:var(--lime);color:#000;font-weight:700}
+.step-pill.active .step-num{background:var(--lime);color:#000;font-weight:700;
+  box-shadow:0 0 8px rgba(200,241,53,.4)}
+.sep{color:var(--rim2);font-size:16px}
+
+/* ── Main content ── */
+main{flex:1;display:flex;flex-direction:column;padding:0;overflow:hidden}
+
+/* ── Screens ── */
+.screen{display:none;flex:1;flex-direction:column;min-height:calc(100vh - 73px);animation:screenIn .3s ease}
+.screen.active{display:flex}
+@keyframes screenIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+/* ══════════════════════════════════════
+   SCREEN 1 — TARGET SELECTION
+══════════════════════════════════════ */
+#s1{
+  flex-direction:column;align-items:center;justify-content:center;
+  padding:60px 32px;gap:0;position:relative;overflow:hidden;
+}
+#s1::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 60% 40% at 50% 60%,rgba(200,241,53,.04) 0%,transparent 70%);
+  pointer-events:none;
+}
+
+.hero-eyebrow{
+  font-family:var(--mono);font-size:11px;color:var(--lime);letter-spacing:.2em;text-transform:uppercase;
+  margin-bottom:20px;display:flex;align-items:center;gap:10px;
+}
+.eyebrow-line{width:40px;height:1px;background:var(--lime);opacity:.5}
+
+.hero-title{
+  font-size:clamp(48px,6vw,80px);font-weight:800;line-height:.95;
+  text-align:center;letter-spacing:-.02em;margin-bottom:16px;
+}
+.hero-title em{font-style:normal;color:var(--lime);display:block}
+
+.hero-sub{
+  font-family:var(--serif);font-style:italic;font-size:clamp(16px,2vw,20px);
+  color:var(--muted);text-align:center;max-width:440px;line-height:1.6;
+  margin-bottom:56px;
+}
+
+.targets-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:12px;
+  width:100%;max-width:820px;margin-bottom:40px;
+}
+.target{
+  background:var(--lift);border:1px solid var(--rim);border-radius:14px;
+  padding:24px 20px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;gap:14px;user-select:none;
+}
+.target::before{
+  content:'';position:absolute;inset:0;border-radius:14px;
+  background:var(--lime2);opacity:0;transition:opacity .2s;
+}
+.target:hover{border-color:var(--rim2);transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,0,0,.4)}
+.target:hover::before{opacity:1}
+.target.selected{
+  border-color:var(--lime);background:var(--paper);
+  box-shadow:0 0 0 1px var(--lime),0 0 40px rgba(200,241,53,.12);
+}
+.target.selected::before{opacity:1}
+
+.target-icon{
+  font-size:28px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;
+  background:var(--raised);border-radius:10px;border:1px solid var(--rim2);
+}
+.target.selected .target-icon{
+  background:var(--lime2);border-color:rgba(200,241,53,.3);
+}
+.target-name{font-size:15px;font-weight:700;letter-spacing:-.01em}
+.target-desc{font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.6}
+.target-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:auto}
+.ttag{
+  font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:3px;
+  background:var(--raised);border:1px solid var(--rim);color:var(--muted);
+}
+.target.selected .ttag{background:var(--lime2);border-color:rgba(200,241,53,.2);color:var(--lime)}
+.target-check{
+  position:absolute;top:14px;right:14px;width:20px;height:20px;
+  border:2px solid var(--rim2);border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:10px;transition:all .2s;
+}
+.target.selected .target-check{
+  background:var(--lime);border-color:var(--lime);color:#000;font-weight:900;
+}
+
+.target-badge{
+  position:absolute;top:14px;left:14px;font-family:var(--mono);font-size:8px;
+  padding:2px 6px;border-radius:2px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+}
+.badge-free{background:var(--green2);color:var(--green);border:1px solid rgba(61,220,132,.2)}
+.badge-cloud{background:var(--blue2);color:var(--blue);border:1px solid rgba(78,158,255,.2)}
+.badge-local{background:var(--amber2);color:var(--amber);border:1px solid rgba(245,166,35,.2)}
+
+.cta-row{display:flex;align-items:center;gap:12px}
+.btn-next{
+  display:flex;align-items:center;gap:10px;padding:14px 32px;
+  background:var(--lime);color:#000;border:none;border-radius:8px;
+  font-family:var(--syne);font-size:14px;font-weight:700;cursor:pointer;
+  transition:all .18s;letter-spacing:.02em;
+}
+.btn-next:hover{background:#d4f53a;transform:translateY(-1px);box-shadow:0 8px 24px rgba(200,241,53,.3)}
+.btn-next:disabled{opacity:.3;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-next .arrow{transition:transform .18s}
+.btn-next:hover .arrow{transform:translateX(4px)}
+.btn-back{
+  display:flex;align-items:center;gap:8px;padding:13px 20px;
+  background:transparent;color:var(--muted);border:1px solid var(--rim);border-radius:8px;
+  font-family:var(--mono);font-size:12px;cursor:pointer;transition:all .18s;
+}
+.btn-back:hover{border-color:var(--rim2);color:var(--white)}
+
+/* ══════════════════════════════════════
+   SCREEN 2 — CONFIGURE
+══════════════════════════════════════ */
+#s2{flex-direction:row}
+
+.config-left{
+  width:340px;flex-shrink:0;border-right:1px solid var(--rim);
+  background:var(--paper);padding:36px 28px;display:flex;flex-direction:column;gap:8px;
+}
+.config-right{
+  flex:1;padding:36px 40px;display:flex;flex-direction:column;gap:24px;overflow-y:auto;
+}
+
+.section-label{
+  font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.2em;
+  text-transform:uppercase;margin-bottom:2px;padding:0 4px;margin-top:16px;
+}
+.section-label:first-child{margin-top:0}
+
+.cfg-item{
+  padding:10px 12px;border-radius:7px;cursor:pointer;transition:all .15s;
+  border:1px solid transparent;display:flex;align-items:center;gap:10px;
+}
+.cfg-item:hover{background:var(--lift);border-color:var(--rim)}
+.cfg-item.active{background:var(--lift);border-color:rgba(200,241,53,.25);color:var(--lime)}
+.cfg-dot{
+  width:6px;height:6px;border-radius:50%;background:var(--rim2);flex-shrink:0;transition:all .15s;
+}
+.cfg-item.done .cfg-dot{background:var(--lime);box-shadow:0 0 6px rgba(200,241,53,.5)}
+.cfg-item.active .cfg-dot{background:var(--lime);box-shadow:0 0 8px rgba(200,241,53,.6);animation:pulseDot 1.5s infinite}
+@keyframes pulseDot{0%,100%{box-shadow:0 0 6px rgba(200,241,53,.5)}50%{box-shadow:0 0 12px rgba(200,241,53,.8)}}
+.cfg-item-name{font-size:12px;font-weight:600;letter-spacing:.01em}
+.cfg-item-status{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--muted)}
+.cfg-item.done .cfg-item-status{color:var(--lime)}
+
+.config-panel{display:none;flex-direction:column;gap:20px}
+.config-panel.active{display:flex}
+.config-panel-title{font-size:22px;font-weight:800;letter-spacing:-.02em;margin-bottom:4px}
+.config-panel-sub{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.6}
+
+.field-group{display:flex;flex-direction:column;gap:7px}
+.field-label{
+  font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;
+  display:flex;align-items:center;gap:8px;
+}
+.field-req{color:var(--lime);font-size:12px}
+.field-desc{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px;line-height:1.6}
+.finput{
+  background:var(--raised);border:1px solid var(--rim);border-radius:7px;
+  padding:10px 14px;color:var(--white);font-family:var(--mono);font-size:12px;
+  outline:none;transition:all .15s;width:100%;
+}
+.finput::placeholder{color:var(--muted)}
+.finput:focus{border-color:rgba(200,241,53,.5);box-shadow:0 0 0 3px rgba(200,241,53,.07);background:var(--lift)}
+.finput.valid{border-color:rgba(61,220,132,.4)}
+.fselect{
+  background:var(--raised);border:1px solid var(--rim);border-radius:7px;
+  padding:10px 14px;color:var(--white);font-family:var(--mono);font-size:12px;
+  outline:none;transition:all .15s;width:100%;appearance:none;cursor:pointer;
+}
+.fselect:focus{border-color:rgba(200,241,53,.5);box-shadow:0 0 0 3px rgba(200,241,53,.07)}
+
+.slider-row{display:flex;align-items:center;gap:12px}
+.fslider{flex:1;appearance:none;height:4px;border-radius:2px;background:var(--rim2);outline:none;cursor:pointer}
+.fslider::-webkit-slider-thumb{
+  appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--lime);cursor:pointer;box-shadow:0 0 8px rgba(200,241,53,.4);
+  border:2px solid #000;transition:box-shadow .15s;
+}
+.fslider::-webkit-slider-thumb:hover{box-shadow:0 0 12px rgba(200,241,53,.6)}
+.slider-val{
+  font-family:var(--mono);font-size:12px;color:var(--lime);min-width:28px;text-align:right;font-weight:700;
+}
+
+.toggle-row{display:flex;align-items:center;gap:12px}
+.toggle{
+  width:40px;height:22px;border-radius:11px;background:var(--rim2);cursor:pointer;
+  position:relative;transition:background .2s;flex-shrink:0;border:none;
+}
+.toggle.on{background:var(--lime)}
+.toggle::after{
+  content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;
+  border-radius:50%;background:#000;transition:transform .2s;
+}
+.toggle.on::after{transform:translateX(18px)}
+.toggle-label{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.toggle.on + .toggle-label{color:var(--white)}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.secret-row{
+  display:flex;align-items:center;gap:8px;padding:10px 12px;
+  background:var(--raised);border:1px solid var(--rim);border-radius:7px;
+  font-family:var(--mono);font-size:11px;
+}
+.secret-icon{font-size:14px;flex-shrink:0}
+.secret-name{color:var(--muted);flex:1}
+.secret-val{
+  background:transparent;border:none;outline:none;color:var(--white);
+  font-family:var(--mono);font-size:11px;flex:1;min-width:0;
+}
+.secret-val::placeholder{color:var(--muted)}
+
+.target-summary{
+  background:var(--raised);border:1px solid var(--rim);border-radius:10px;
+  padding:16px;display:flex;align-items:center;gap:14px;
+}
+.ts-icon{font-size:24px;width:42px;height:42px;display:flex;align-items:center;justify-content:center;
+  background:var(--lift);border-radius:8px;border:1px solid var(--rim2);flex-shrink:0}
+.ts-name{font-size:14px;font-weight:700}
+.ts-sub{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px}
+.ts-change{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--lime);cursor:pointer;
+  padding:4px 8px;border:1px solid rgba(200,241,53,.2);border-radius:4px;transition:all .15s}
+.ts-change:hover{background:var(--lime2)}
+
+/* ══════════════════════════════════════
+   SCREEN 3 — DEPLOY
+══════════════════════════════════════ */
+#s3{flex-direction:column;align-items:center;justify-content:flex-start;padding:48px 32px;gap:32px;overflow-y:auto}
+
+.deploy-header{text-align:center;max-width:560px}
+.deploy-title{font-size:clamp(32px,4vw,52px);font-weight:800;letter-spacing:-.02em;margin-bottom:12px}
+.deploy-title .target-name-inline{color:var(--lime)}
+.deploy-sub{font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.8}
+
+.launch-btn-wrap{position:relative;display:inline-flex;align-items:center;justify-content:center}
+.launch-ring{
+  position:absolute;inset:-12px;border-radius:50%;border:1px solid rgba(200,241,53,.15);
+  animation:none;
+}
+.launch-ring.spinning{animation:spin 3s linear infinite}
+.launch-ring::before{
+  content:'';position:absolute;top:-1px;left:50%;width:4px;height:4px;
+  background:var(--lime);border-radius:50%;transform:translateX(-50%);
+  box-shadow:0 0 8px var(--lime);
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.launch-btn{
+  width:100px;height:100px;border-radius:50%;background:var(--lime);border:none;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  font-family:var(--syne);font-size:11px;font-weight:700;color:#000;letter-spacing:.08em;
+  transition:all .2s;box-shadow:0 0 32px rgba(200,241,53,.3);
+}
+.launch-btn:hover{transform:scale(1.06);box-shadow:0 0 48px rgba(200,241,53,.5)}
+.launch-btn.running{background:var(--raised);border:2px solid var(--lime);color:var(--lime);cursor:not-allowed;transform:none}
+.launch-btn.done{background:#0a1a0a;border:2px solid var(--green);color:var(--green);cursor:default}
+.launch-icon{font-size:28px;margin-bottom:2px}
+
+.deploy-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px;width:100%;max-width:900px}
+
+/* Steps */
+.steps-panel{background:var(--paper);border:1px solid var(--rim);border-radius:12px;padding:20px}
+.steps-title{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:16px}
+.step-row{
+  display:flex;align-items:flex-start;gap:12px;padding:8px 0;
+  border-bottom:1px solid rgba(34,34,40,.6);position:relative;
+}
+.step-row:last-child{border-bottom:none}
+.step-indicator{
+  width:22px;height:22px;border-radius:50%;flex-shrink:0;margin-top:1px;
+  display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:9px;
+  border:1px solid var(--rim2);color:var(--muted);transition:all .3s;font-weight:700;
+}
+.step-row.active .step-indicator{
+  border-color:var(--lime);color:#000;background:var(--lime);
+  box-shadow:0 0 12px rgba(200,241,53,.4);animation:stepPulse 1s infinite;
+}
+.step-row.done .step-indicator{border-color:var(--green);color:var(--green);background:rgba(61,220,132,.1)}
+.step-row.error .step-indicator{border-color:var(--red);color:var(--red);background:var(--red2)}
+@keyframes stepPulse{0%,100%{box-shadow:0 0 8px rgba(200,241,53,.3)}50%{box-shadow:0 0 16px rgba(200,241,53,.6)}}
+.step-content{flex:1}
+.step-name{font-size:12px;font-weight:600;letter-spacing:.01em;transition:color .2s}
+.step-row.active .step-name{color:var(--lime)}
+.step-row.done .step-name{color:var(--green)}
+.step-row.error .step-name{color:var(--red)}
+.step-detail{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:2px;line-height:1.5;min-height:14px}
+.step-time{font-family:var(--mono);font-size:9px;color:var(--muted);margin-left:auto;flex-shrink:0;padding-top:2px}
+.step-row.done .step-time{color:var(--green)}
+
+/* Terminal */
+.terminal{
+  background:#000;border:1px solid var(--rim);border-radius:12px;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.term-bar{
+  display:flex;align-items:center;gap:8px;padding:10px 16px;
+  background:var(--raised);border-bottom:1px solid var(--rim);
+}
+.term-dot{width:10px;height:10px;border-radius:50%}
+.td-red{background:#ff5f57}.td-amber{background:#ffbd2e}.td-green{background:#28c840}
+.term-title{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:8px;letter-spacing:.05em}
+.term-body{
+  padding:16px;font-family:var(--mono);font-size:11px;line-height:2;
+  flex:1;min-height:220px;max-height:260px;overflow-y:auto;
+}
+.term-body::-webkit-scrollbar{width:4px}
+.term-body::-webkit-scrollbar-track{background:transparent}
+.term-body::-webkit-scrollbar-thumb{background:var(--rim2);border-radius:2px}
+.tline{display:flex;gap:8px;animation:tLineIn .1s ease}
+@keyframes tLineIn{from{opacity:0}to{opacity:1}}
+.tprompt{color:#555;flex-shrink:0}
+.tcmd{color:#4e9eff}
+.tout{color:var(--muted)}
+.tok{color:var(--green)}
+.twarn{color:var(--amber)}
+.terr{color:var(--red)}
+.tcursor{display:inline-block;width:8px;height:14px;background:var(--lime);animation:blink .8s infinite;vertical-align:text-bottom;margin-left:2px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Generated config */
+.config-viewer{
+  background:var(--paper);border:1px solid var(--rim);border-radius:12px;
+  width:100%;max-width:900px;overflow:hidden;
+}
+.cv-tabs{display:flex;border-bottom:1px solid var(--rim);background:var(--raised)}
+.cv-tab{
+  padding:10px 18px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+  cursor:pointer;border-bottom:2px solid transparent;color:var(--muted);transition:all .15s;
+  display:flex;align-items:center;gap:7px;
+}
+.cv-tab.active{color:var(--lime);border-bottom-color:var(--lime)}
+.cv-tab:hover{color:var(--white)}
+.cv-body{padding:20px;font-family:var(--mono);font-size:11px;line-height:1.9;color:#8892a4;position:relative}
+.cv-body .key{color:#7ec8e3}.cv-body .val{color:#98d982}.cv-body .cmt{color:#4a5568}
+.cv-body .str{color:#f6c90e}.cv-body .kw{color:var(--lime)}.cv-body .num{color:var(--amber)}
+.copy-btn{
+  position:absolute;top:12px;right:12px;padding:5px 10px;background:var(--raised);
+  border:1px solid var(--rim);border-radius:5px;font-family:var(--mono);font-size:9px;
+  color:var(--muted);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px;
+}
+.copy-btn:hover{border-color:var(--lime);color:var(--lime);background:var(--lime2)}
+
+/* ══════════════════════════════════════
+   SCREEN 4 — LIVE / SUCCESS
+══════════════════════════════════════ */
+#s4{flex-direction:column;align-items:center;justify-content:center;padding:48px 32px;gap:32px;position:relative;overflow:hidden}
+#s4::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 70% 60% at 50% 50%,rgba(61,220,132,.05) 0%,transparent 70%);
+  animation:breathe 4s ease-in-out infinite;
+}
+@keyframes breathe{0%,100%{opacity:.4}50%{opacity:1}}
+
+.success-badge{
+  display:flex;align-items:center;gap:10px;padding:8px 20px;
+  background:var(--green2);border:1px solid rgba(61,220,132,.3);border-radius:20px;
+  font-family:var(--mono);font-size:11px;color:var(--green);letter-spacing:.08em;
+}
+.success-badge-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.success-title{font-size:clamp(36px,5vw,64px);font-weight:800;letter-spacing:-.03em;text-align:center;line-height:.95}
+.success-title .highlight{color:var(--green)}
+
+.success-url-card{
+  background:var(--raised);border:1px solid rgba(61,220,132,.2);border-radius:10px;
+  padding:16px 20px;display:flex;align-items:center;gap:14px;
+  max-width:480px;width:100%;
+}
+.suc-url{font-family:var(--mono);font-size:13px;color:var(--white);font-weight:500;flex:1}
+.suc-copy{
+  padding:5px 12px;background:var(--green2);border:1px solid rgba(61,220,132,.2);
+  border-radius:5px;font-family:var(--mono);font-size:10px;color:var(--green);cursor:pointer;
+  transition:all .15s;flex-shrink:0;
+}
+.suc-copy:hover{background:rgba(61,220,132,.15)}
+
+.live-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;width:100%;max-width:680px}
+.live-stat{
+  background:var(--paper);border:1px solid var(--rim);border-radius:10px;
+  padding:16px;text-align:center;
+}
+.ls-val{font-size:28px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.ls-label{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:4px;letter-spacing:.1em;text-transform:uppercase}
+
+.action-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.act-btn{
+  padding:12px 24px;border-radius:8px;font-family:var(--syne);font-size:13px;font-weight:700;
+  cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;letter-spacing:.02em;
+}
+.act-primary{background:var(--lime);color:#000;border:none}
+.act-primary:hover{background:#d4f53a;transform:translateY(-1px)}
+.act-secondary{background:transparent;color:var(--white);border:1px solid var(--rim);border-radius:8px}
+.act-secondary:hover{border-color:var(--rim2);background:var(--lift)}
+
+/* ══════════════════════════════════════
+   SCREEN 5 — FIRST FUNCTION (onboarding)
+══════════════════════════════════════ */
+#s5{flex-direction:column;padding:40px 32px;gap:28px;align-items:center;overflow-y:auto}
+
+.onboard-header{text-align:center;max-width:540px}
+.onboard-title{font-size:clamp(28px,3.5vw,46px);font-weight:800;letter-spacing:-.02em;margin-bottom:10px}
+.onboard-title .accent{color:var(--lime)}
+.onboard-sub{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8}
+
+.templates-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;width:100%;max-width:900px}
+.tpl{
+  background:var(--paper);border:1px solid var(--rim);border-radius:10px;
+  padding:16px;cursor:pointer;transition:all .18s;position:relative;overflow:hidden;
+}
+.tpl::after{
+  content:'';position:absolute;inset:0;background:var(--lime2);opacity:0;transition:opacity .18s;
+}
+.tpl:hover{border-color:var(--rim2);transform:translateY(-1px)}
+.tpl:hover::after{opacity:1}
+.tpl.selected{border-color:var(--lime);background:rgba(200,241,53,.04)}
+.tpl.selected::after{opacity:1}
+.tpl-emoji{font-size:22px;margin-bottom:10px;position:relative;z-index:1}
+.tpl-name{font-size:12px;font-weight:700;letter-spacing:.01em;margin-bottom:4px;position:relative;z-index:1}
+.tpl-desc{font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.5;position:relative;z-index:1}
+.tpl-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px;position:relative;z-index:1}
+.tpl-tag{
+  font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:2px;
+  background:var(--raised);border:1px solid var(--rim);color:var(--muted);
+}
+.tpl.selected .tpl-tag{background:var(--lime2);border-color:rgba(200,241,53,.2);color:var(--lime)}
+
+.fn-editor-wrap{width:100%;max-width:900px;display:flex;flex-direction:column;gap:0;border:1px solid var(--rim);border-radius:12px;overflow:hidden}
+.fe-toolbar{
+  display:flex;align-items:center;gap:10px;padding:10px 16px;
+  background:var(--raised);border-bottom:1px solid var(--rim);
+}
+.fe-tb-label{font-family:var(--mono);font-size:10px;color:var(--muted);flex:1}
+.fe-tb-route{
+  background:var(--lift);border:1px solid var(--rim);border-radius:5px;
+  padding:5px 10px;font-family:var(--mono);font-size:11px;color:var(--white);
+  outline:none;transition:border-color .15s;width:200px;
+}
+.fe-tb-route:focus{border-color:rgba(200,241,53,.4)}
+.fe-method-select{
+  background:var(--lift);border:1px solid var(--rim);border-radius:5px;
+  padding:5px 10px;font-family:var(--mono);font-size:11px;color:var(--lime);
+  outline:none;cursor:pointer;
+}
+.fcode-big{
+  background:#020810;padding:20px;font-family:var(--mono);font-size:12px;
+  color:#9ab;line-height:1.9;min-height:220px;resize:vertical;border:none;
+  outline:none;width:100%;tab-size:2;
+}
+.fcode-big:focus{box-shadow:none}
+.fe-actions{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;
+  background:var(--raised);border-top:1px solid var(--rim);
+}
+.fe-hint{font-family:var(--mono);font-size:9px;color:var(--muted);flex:1;line-height:1.6}
+
+.fn-result{
+  width:100%;max-width:900px;background:var(--paper);border:1px solid rgba(61,220,132,.2);
+  border-radius:10px;padding:20px;display:none;
+}
+.fn-result.visible{display:block;animation:screenIn .2s ease}
+.fn-result-hd{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.fn-result-badge{
+  padding:4px 10px;border-radius:4px;font-family:var(--mono);font-size:10px;font-weight:700;
+  background:var(--green2);color:var(--green);border:1px solid rgba(61,220,132,.2);
+}
+.fn-result-url{font-family:var(--mono);font-size:12px;color:var(--blue);flex:1}
+.fn-curl{
+  background:#000;border-radius:7px;padding:14px 16px;font-family:var(--mono);
+  font-size:11px;color:var(--muted);line-height:1.8;position:relative;
+}
+.fn-curl .hlt{color:var(--lime)}
+.fn-curl .hlt2{color:var(--amber)}
+.fn-curl .hlt3{color:var(--green)}
+
+.skip-link{
+  font-family:var(--mono);font-size:10px;color:var(--muted);cursor:pointer;
+  padding:4px 0;border-bottom:1px solid var(--muted);transition:color .15s;
+}
+.skip-link:hover{color:var(--white)}
+
+/* ── Toast ── */
+.toast-wrap{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:999}
+.toast{
+  padding:10px 16px;background:var(--raised);border:1px solid var(--rim2);border-radius:8px;
+  font-family:var(--mono);font-size:11px;animation:toastIn .2s ease;
+  box-shadow:0 4px 24px rgba(0,0,0,.5);
+}
+.toast.ok{border-left:3px solid var(--green)}
+.toast.er{border-left:3px solid var(--red)}
+.toast.in{border-left:3px solid var(--lime)}
+@keyframes toastIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+
+/* ── Responsive ── */
+@media(max-width:900px){
+  #s2{flex-direction:column}
+  .config-left{width:100%;border-right:none;border-bottom:1px solid var(--rim)}
+  .deploy-layout{grid-template-columns:1fr}
+  .targets-grid{grid-template-columns:1fr 1fr}
+  .live-stats{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:560px){
+  .targets-grid{grid-template-columns:1fr}
+  .step-trail{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="logo">
+    <div class="logo-mark">⬡</div>
+    Sovereignly
+  </div>
+  <div class="version">v2.0</div>
+
+  <div class="step-trail">
+    <div class="step-pill active" id="pill-1" onclick="goTo(1)">
+      <span class="step-num">1</span> Target
+    </div>
+    <span class="sep">›</span>
+    <div class="step-pill" id="pill-2" onclick="goTo(2)">
+      <span class="step-num">2</span> Configure
+    </div>
+    <span class="sep">›</span>
+    <div class="step-pill" id="pill-3" onclick="goTo(3)">
+      <span class="step-num">3</span> Deploy
+    </div>
+    <span class="sep">›</span>
+    <div class="step-pill" id="pill-4" onclick="goTo(4)">
+      <span class="step-num">4</span> Live
+    </div>
+    <span class="sep">›</span>
+    <div class="step-pill" id="pill-5" onclick="goTo(5)">
+      <span class="step-num">5</span> First Function
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- ══════════════════════════════════
+     SCREEN 1 — PICK YOUR TARGET
+══════════════════════════════════ -->
+<section class="screen active" id="s1">
+  <div class="hero-eyebrow">
+    <span class="eyebrow-line"></span>
+    Deploy in under 60 seconds
+    <span class="eyebrow-line"></span>
+  </div>
+
+  <h1 class="hero-title">
+    Where should your<br>
+    <em>sovereign cloud</em> live?
+  </h1>
+  <p class="hero-sub">Pick a deployment target. We generate everything — config files, Docker Compose, deploy scripts — all ready to run.</p>
+
+  <div class="targets-grid" id="targets-grid">
+    <div class="target" data-id="docker" onclick="selectTarget(this)">
+      <span class="target-badge badge-local">LOCAL</span>
+      <div class="target-check">✓</div>
+      <div class="target-icon">🐳</div>
+      <div>
+        <div class="target-name">Docker Compose</div>
+        <div class="target-desc">Run on any machine with Docker installed. Perfect for local dev, home servers, or any Linux VPS.</div>
+      </div>
+      <div class="target-tags">
+        <span class="ttag">docker</span>
+        <span class="ttag">any OS</span>
+        <span class="ttag">1 command</span>
+      </div>
+    </div>
+
+    <div class="target" data-id="flyio" onclick="selectTarget(this)">
+      <span class="target-badge badge-cloud">CLOUD</span>
+      <div class="target-check">✓</div>
+      <div class="target-icon">🚀</div>
+      <div>
+        <div class="target-name">Fly.io</div>
+        <div class="target-desc">Deploy to 35+ global regions. Auto-scales to zero. Free tier for personal projects.</div>
+      </div>
+      <div class="target-tags">
+        <span class="ttag">global edge</span>
+        <span class="ttag">free tier</span>
+        <span class="ttag">fly deploy</span>
+      </div>
+    </div>
+
+    <div class="target" data-id="hetzner" onclick="selectTarget(this)">
+      <span class="target-badge badge-cloud">CLOUD</span>
+      <div class="target-check">✓</div>
+      <div class="target-icon">🖥</div>
+      <div>
+        <div class="target-name">Hetzner VPS</div>
+        <div class="target-desc">Best price/performance in Europe. Full data sovereignty, €4.35/mo for 2 vCPU + 4GB RAM.</div>
+      </div>
+      <div class="target-tags">
+        <span class="ttag">EU data</span>
+        <span class="ttag">€4/mo</span>
+        <span class="ttag">SSH deploy</span>
+      </div>
+    </div>
+
+    <div class="target" data-id="raspberry" onclick="selectTarget(this)">
+      <span class="target-badge badge-free">FREE</span>
+      <div class="target-check">✓</div>
+      <div class="target-icon">🫐</div>
+      <div>
+        <div class="target-name">Raspberry Pi</div>
+        <div class="target-desc">Ultimate sovereignty. Run your cloud at home on ARM64. Bun is blazing fast on Pi 5.</div>
+      </div>
+      <div class="target-tags">
+        <span class="ttag">ARM64</span>
+        <span class="ttag">home lab</span>
+        <span class="ttag">zero cost</span>
+      </div>
+    </div>
+
+    <div class="target" data-id="bare" onclick="selectTarget(this)">
+      <span class="target-badge badge-local">BARE</span>
+      <div class="target-check">✓</div>
+      <div class="target-icon">⚙</div>
+      <div>
+        <div class="target-name">Bare Metal / VPS</div>
+        <div class="target-desc">Any Ubuntu/Debian server. We generate a systemd service + install script for you.</div>
+      </div>
+      <div class="target-tags">
+        <span class="ttag">systemd</span>
+        <span class="ttag">ubuntu</span>
+        <span class="ttag">ssh ready</span>
+      </div>
+    </div>
+
+    <div class="target" data-id="cluster" onclick="selectTarget(this)">
+      <span class="target-badge badge-cloud">SCALE</span>
+      <div class="target-check">✓</div>
+      <div class="target-icon">⬡</div>
+      <div>
+        <div class="target-name">Multi-Node Cluster</div>
+        <div class="target-desc">Deploy across 3+ nodes with Caddy load balancing and shared SQLite via Litestream.</div>
+      </div>
+      <div class="target-tags">
+        <span class="ttag">horizontal scale</span>
+        <span class="ttag">HA</span>
+        <span class="ttag">litestream</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta-row">
+    <button class="btn-next" id="btn-s1-next" disabled onclick="goTo(2)">
+      Configure <span class="arrow">→</span>
+    </button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     SCREEN 2 — CONFIGURE
+══════════════════════════════════ -->
+<section class="screen" id="s2">
+  <div class="config-left">
+    <div class="section-label">Configuration</div>
+    <div class="cfg-item active" id="ci-1" onclick="showPanel('basics')">
+      <span class="cfg-dot"></span>
+      <span class="cfg-item-name">Basics</span>
+      <span class="cfg-item-status" id="cs-1">required</span>
+    </div>
+    <div class="cfg-item" id="ci-2" onclick="showPanel('network')">
+      <span class="cfg-dot"></span>
+      <span class="cfg-item-name">Network & Domain</span>
+      <span class="cfg-item-status" id="cs-2">optional</span>
+    </div>
+    <div class="cfg-item" id="ci-3" onclick="showPanel('runtime')">
+      <span class="cfg-dot"></span>
+      <span class="cfg-item-name">Runtime</span>
+      <span class="cfg-item-status" id="cs-3">optional</span>
+    </div>
+    <div class="section-label">Secrets</div>
+    <div class="cfg-item" id="ci-4" onclick="showPanel('secrets')">
+      <span class="cfg-dot"></span>
+      <span class="cfg-item-name">API Keys & Secrets</span>
+      <span class="cfg-item-status" id="cs-4">optional</span>
+    </div>
+    <div class="section-label">Preview</div>
+    <div class="cfg-item" id="ci-5" onclick="showPanel('preview')">
+      <span class="cfg-dot"></span>
+      <span class="cfg-item-name">Generated Config</span>
+      <span class="cfg-item-status" id="cs-5">preview</span>
+    </div>
+  </div>
+
+  <div class="config-right">
+    <!-- Target summary -->
+    <div class="target-summary" id="target-summary">
+      <div class="ts-icon" id="ts-icon">🐳</div>
+      <div>
+        <div class="ts-name" id="ts-name">Docker Compose</div>
+        <div class="ts-sub" id="ts-sub">Local / any machine with Docker</div>
+      </div>
+      <span class="ts-change" onclick="goTo(1)">← Change</span>
+    </div>
+
+    <!-- Panel: Basics -->
+    <div class="config-panel active" id="panel-basics">
+      <div>
+        <div class="config-panel-title">Basics</div>
+        <div class="config-panel-sub">Name your cloud and set the admin token to secure the management API.</div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">App Name <span class="field-req">*</span></label>
+        <input class="finput" id="cfg-name" placeholder="my-sovereign-cloud" oninput="validateBasics()">
+        <div class="field-desc">Used as the Docker container name and Fly app name. Lowercase, hyphens only.</div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Admin Token <span class="field-req">*</span></label>
+        <input class="finput" id="cfg-token" type="password" placeholder="Generate a secure token…" oninput="validateBasics()">
+        <div class="field-desc">Secures the /_sovereign/functions deploy API. Keep this secret.</div>
+      </div>
+      <button class="btn-back" style="width:fit-content" onclick="generateToken()">⚡ Generate Token</button>
+    </div>
+
+    <!-- Panel: Network -->
+    <div class="config-panel" id="panel-network">
+      <div>
+        <div class="config-panel-title">Network & Domain</div>
+        <div class="config-panel-sub">Configure the port, domain, and CORS settings. TLS is handled automatically by Caddy.</div>
+      </div>
+      <div class="two-col">
+        <div class="field-group">
+          <label class="field-label">Port</label>
+          <input class="finput" id="cfg-port" value="8787" type="number">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Region</label>
+          <select class="fselect" id="cfg-region">
+            <option value="iad">🇺🇸 Virginia (iad)</option>
+            <option value="cdg">🇫🇷 Paris (cdg)</option>
+            <option value="fra">🇩🇪 Frankfurt (fra)</option>
+            <option value="nrt">🇯🇵 Tokyo (nrt)</option>
+            <option value="syd">🇦🇺 Sydney (syd)</option>
+            <option value="gru">🇧🇷 São Paulo (gru)</option>
+            <option value="local">🏠 Local only</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Custom Domain</label>
+        <input class="finput" id="cfg-domain" placeholder="cloud.yourdomain.com (optional)">
+        <div class="field-desc">Leave blank for localhost. Caddy auto-provisions TLS when a domain is set.</div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">CORS Origins</label>
+        <input class="finput" id="cfg-cors" value="*" placeholder="* or https://app.example.com">
+      </div>
+    </div>
+
+    <!-- Panel: Runtime -->
+    <div class="config-panel" id="panel-runtime">
+      <div>
+        <div class="config-panel-title">Runtime</div>
+        <div class="config-panel-sub">Tune the Bun worker pool and function execution limits.</div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Worker Pool Size</label>
+        <div class="slider-row">
+          <input type="range" class="fslider" id="cfg-workers" min="1" max="16" value="4" oninput="document.getElementById('workers-val').textContent=this.value">
+          <span class="slider-val" id="workers-val">4</span>
+        </div>
+        <div class="field-desc">Pre-warmed Bun isolates. More workers = higher concurrency. Start with 4.</div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Function Timeout (ms)</label>
+        <div class="slider-row">
+          <input type="range" class="fslider" id="cfg-timeout" min="1000" max="60000" step="1000" value="30000" oninput="document.getElementById('timeout-val').textContent=(this.value/1000)+'s'">
+          <span class="slider-val" id="timeout-val">30s</span>
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Rate Limit (req/min per IP)</label>
+        <div class="slider-row">
+          <input type="range" class="fslider" id="cfg-ratelimit" min="60" max="3000" step="60" value="600" oninput="document.getElementById('rl-val').textContent=this.value">
+          <span class="slider-val" id="rl-val">600</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="toggle-row">
+          <button class="toggle on" id="t-compression" onclick="this.classList.toggle('on')"></button>
+          <span class="toggle-label">Enable response compression (gzip/zstd)</span>
+        </div>
+        <div class="toggle-row">
+          <button class="toggle on" id="t-etag" onclick="this.classList.toggle('on')"></button>
+          <span class="toggle-label">Enable ETag caching headers</span>
+        </div>
+        <div class="toggle-row">
+          <button class="toggle" id="t-monitoring" onclick="this.classList.toggle('on')"></button>
+          <span class="toggle-label">Include Prometheus + Grafana</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel: Secrets -->
+    <div class="config-panel" id="panel-secrets">
+      <div>
+        <div class="config-panel-title">Secrets</div>
+        <div class="config-panel-sub">These are injected as environment variables and accessible in functions via <code style="background:var(--raised);padding:1px 5px;border-radius:3px;font-size:10px">SECRETS.get('KEY_NAME')</code></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px" id="secrets-list">
+        <div class="secret-row">
+          <span class="secret-icon">🤖</span>
+          <span class="secret-name">ANTHROPIC_KEY</span>
+          <input class="secret-val" placeholder="sk-ant-…" id="s-anthropic" type="password">
+        </div>
+        <div class="secret-row">
+          <span class="secret-icon">🧠</span>
+          <span class="secret-name">OPENAI_KEY</span>
+          <input class="secret-val" placeholder="sk-…" id="s-openai" type="password">
+        </div>
+        <div class="secret-row">
+          <span class="secret-icon">💳</span>
+          <span class="secret-name">STRIPE_KEY</span>
+          <input class="secret-val" placeholder="sk_live_…" id="s-stripe" type="password">
+        </div>
+        <div class="secret-row">
+          <span class="secret-icon">🔗</span>
+          <span class="secret-name">WEBHOOK_SECRET</span>
+          <input class="secret-val" placeholder="whsec_…" id="s-webhook" type="password">
+        </div>
+        <div class="secret-row">
+          <span class="secret-icon">➕</span>
+          <span class="secret-name" style="color:var(--muted);font-style:italic">Custom key…</span>
+          <input class="secret-val" placeholder="MY_CUSTOM_KEY" id="s-custom-name">
+        </div>
+      </div>
+      <div class="field-desc" style="margin-top:4px">Secrets are stored in your <code style="font-size:9px">.env</code> file and never logged or transmitted.</div>
+    </div>
+
+    <!-- Panel: Preview -->
+    <div class="config-panel" id="panel-preview">
+      <div>
+        <div class="config-panel-title">Generated Config</div>
+        <div class="config-panel-sub">Everything we'll generate. Review before deploying.</div>
+      </div>
+      <div class="config-viewer">
+        <div class="cv-tabs">
+          <div class="cv-tab active" onclick="switchTab('env',this)">.env</div>
+          <div class="cv-tab" onclick="switchTab('compose',this)">docker-compose.yml</div>
+          <div class="cv-tab" onclick="switchTab('fly',this)">fly.toml</div>
+          <div class="cv-tab" onclick="switchTab('caddy',this)">Caddyfile</div>
+          <div class="cv-tab" onclick="switchTab('script',this)">install.sh</div>
+        </div>
+        <div class="cv-body" id="cv-content">
+          <button class="copy-btn" onclick="copyConfig()">⎘ Copy</button>
+          <div id="cv-text"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cta-row">
+      <button class="btn-back" onclick="goTo(1)">← Back</button>
+      <button class="btn-next" id="btn-s2-next" disabled onclick="goTo(3)">
+        Review & Deploy <span class="arrow">→</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     SCREEN 3 — DEPLOY
+══════════════════════════════════ -->
+<section class="screen" id="s3">
+  <div class="deploy-header">
+    <h2 class="deploy-title">Deploy to <span class="target-name-inline" id="deploy-target-name">Docker</span></h2>
+    <div class="deploy-sub" id="deploy-sub-text">Your configs are ready. Click the button to begin the deployment sequence.</div>
+  </div>
+
+  <div class="launch-btn-wrap">
+    <div class="launch-ring" id="launch-ring"></div>
+    <button class="launch-btn" id="launch-btn" onclick="startDeploy()">
+      <span class="launch-icon">⬡</span>
+      LAUNCH
+    </button>
+  </div>
+
+  <div class="deploy-layout">
+    <div class="steps-panel">
+      <div class="steps-title">Deployment Steps</div>
+      <div id="deploy-steps"></div>
+    </div>
+
+    <div class="terminal">
+      <div class="term-bar">
+        <div class="term-dot td-red"></div>
+        <div class="term-dot td-amber"></div>
+        <div class="term-dot td-green"></div>
+        <span class="term-title">sovereign — deploy</span>
+      </div>
+      <div class="term-body" id="term-body">
+        <div class="tline"><span class="tprompt">$</span><span class="tcmd"> sovereign deploy</span></div>
+        <div class="tline"><span class="tout">Waiting for launch…</span></div>
+        <div class="tline"><span class="tcursor"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="config-viewer" style="max-width:900px">
+    <div class="cv-tabs" id="gen-tabs">
+      <div class="cv-tab active" onclick="switchGenTab('env',this)">.env</div>
+      <div class="cv-tab" onclick="switchGenTab('compose',this)">compose</div>
+      <div class="cv-tab" onclick="switchGenTab('fly',this)">fly.toml</div>
+      <div class="cv-tab" onclick="switchGenTab('caddy',this)">Caddyfile</div>
+      <div class="cv-tab" onclick="switchGenTab('install',this)">install.sh</div>
+    </div>
+    <div class="cv-body">
+      <button class="copy-btn" onclick="copyGenConfig()">⎘ Copy</button>
+      <div id="gen-config-text"></div>
+    </div>
+  </div>
+
+  <div class="cta-row">
+    <button class="btn-back" onclick="goTo(2)" id="btn-s3-back">← Back</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     SCREEN 4 — LIVE
+══════════════════════════════════ -->
+<section class="screen" id="s4">
+  <div class="success-badge">
+    <span class="success-badge-dot"></span>
+    SOVEREIGN CLOUD DEPLOYED
+  </div>
+
+  <h2 class="success-title">Your cloud is<br><span class="highlight">live.</span></h2>
+
+  <div class="success-url-card">
+    <span class="suc-url" id="live-url">http://localhost:8787</span>
+    <button class="suc-copy" onclick="copyUrl()">⎘ Copy</button>
+  </div>
+
+  <div class="live-stats">
+    <div class="live-stat">
+      <div class="ls-val" style="color:var(--lime)" id="ls-fns">3</div>
+      <div class="ls-label">Functions ready</div>
+    </div>
+    <div class="live-stat">
+      <div class="ls-val" style="color:var(--green)" id="ls-workers">4</div>
+      <div class="ls-label">Workers running</div>
+    </div>
+    <div class="live-stat">
+      <div class="ls-val" style="color:var(--amber)" id="ls-start">15ms</div>
+      <div class="ls-label">Cold start</div>
+    </div>
+    <div class="live-stat">
+      <div class="ls-val" style="color:var(--blue)" id="ls-mem">25MB</div>
+      <div class="ls-label">Memory used</div>
+    </div>
+  </div>
+
+  <div class="action-row">
+    <button class="act-btn act-primary" onclick="goTo(5)">
+      Deploy First Function →
+    </button>
+    <button class="act-btn act-secondary" onclick="openDashboard()">
+      Open Dashboard ↗
+    </button>
+    <button class="act-btn act-secondary" onclick="downloadAll()">
+      ⬇ Download Configs
+    </button>
+    <button class="act-btn act-secondary" onclick="goTo(1)">
+      ↺ Deploy Another
+    </button>
+  </div>
+
+  <div id="connection-status" style="font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px">
+    <span id="conn-dot" style="width:6px;height:6px;border-radius:50%;background:var(--amber);display:inline-block"></span>
+    <span id="conn-text">Testing connection to your cloud…</span>
+  </div>
+
+  <div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center;max-width:480px;line-height:2">
+    Re-deploy anytime:&nbsp;&nbsp;
+    <span style="color:var(--lime)">docker compose up -d</span>
+    &nbsp;·&nbsp;
+    <span style="color:var(--blue)">fly deploy</span>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════
+     SCREEN 5 — FIRST FUNCTION
+══════════════════════════════════ -->
+<section class="screen" id="s5">
+  <div class="onboard-header">
+    <h2 class="onboard-title">Deploy your <span class="accent">first function</span></h2>
+    <div class="onboard-sub">Pick a template, customise the code, and hit Deploy. Your function goes live in &lt;1 second.</div>
+  </div>
+
+  <!-- Template browser -->
+  <div class="templates-grid" id="tpl-grid">
+    <div class="tpl selected" data-tpl="hello" onclick="pickTpl(this)">
+      <div class="tpl-emoji">👋</div>
+      <div class="tpl-name">Hello World</div>
+      <div class="tpl-desc">Simple JSON response with query params. The classic starting point.</div>
+      <div class="tpl-tags"><span class="tpl-tag">GET</span><span class="tpl-tag">JSON</span></div>
+    </div>
+    <div class="tpl" data-tpl="ai" onclick="pickTpl(this)">
+      <div class="tpl-emoji">🤖</div>
+      <div class="tpl-name">AI Chat Proxy</div>
+      <div class="tpl-desc">Proxy to Claude or OpenAI with CORS, rate limiting, and secret injection.</div>
+      <div class="tpl-tags"><span class="tpl-tag">POST</span><span class="tpl-tag">streaming</span><span class="tpl-tag">secrets</span></div>
+    </div>
+    <div class="tpl" data-tpl="webhook" onclick="pickTpl(this)">
+      <div class="tpl-emoji">🔔</div>
+      <div class="tpl-name">Webhook Handler</div>
+      <div class="tpl-desc">Receive webhooks, verify signatures, store events in KV with TTL.</div>
+      <div class="tpl-tags"><span class="tpl-tag">POST</span><span class="tpl-tag">KV</span><span class="tpl-tag">HMAC</span></div>
+    </div>
+    <div class="tpl" data-tpl="kv" onclick="pickTpl(this)">
+      <div class="tpl-emoji">🗄</div>
+      <div class="tpl-name">KV REST API</div>
+      <div class="tpl-desc">A full CRUD key-value REST API backed by the built-in SQLite KV store.</div>
+      <div class="tpl-tags"><span class="tpl-tag">GET</span><span class="tpl-tag">POST</span><span class="tpl-tag">DELETE</span></div>
+    </div>
+    <div class="tpl" data-tpl="analytics" onclick="pickTpl(this)">
+      <div class="tpl-emoji">📊</div>
+      <div class="tpl-name">Analytics Tracker</div>
+      <div class="tpl-desc">Track page views, events, and unique visitors. Results as JSON or SVG badge.</div>
+      <div class="tpl-tags"><span class="tpl-tag">POST</span><span class="tpl-tag">counters</span></div>
+    </div>
+    <div class="tpl" data-tpl="cron" onclick="pickTpl(this)">
+      <div class="tpl-emoji">⏱</div>
+      <div class="tpl-name">Scheduled Job</div>
+      <div class="tpl-desc">Runs on a cron schedule. Fetches a remote URL and stores the response in KV.</div>
+      <div class="tpl-tags"><span class="tpl-tag">cron</span><span class="tpl-tag">fetch</span><span class="tpl-tag">KV</span></div>
+    </div>
+    <div class="tpl" data-tpl="auth" onclick="pickTpl(this)">
+      <div class="tpl-emoji">🔐</div>
+      <div class="tpl-name">JWT Auth Middleware</div>
+      <div class="tpl-desc">Validate Bearer tokens, issue JWTs, and protect downstream routes.</div>
+      <div class="tpl-tags"><span class="tpl-tag">POST</span><span class="tpl-tag">JWT</span><span class="tpl-tag">crypto</span></div>
+    </div>
+    <div class="tpl" data-tpl="og" onclick="pickTpl(this)">
+      <div class="tpl-emoji">🖼</div>
+      <div class="tpl-name">OG Image Generator</div>
+      <div class="tpl-desc">Generate dynamic social share images as SVG from URL query params.</div>
+      <div class="tpl-tags"><span class="tpl-tag">GET</span><span class="tpl-tag">SVG</span><span class="tpl-tag">dynamic</span></div>
+    </div>
+  </div>
+
+  <!-- Code editor -->
+  <div class="fn-editor-wrap">
+    <div class="fe-toolbar">
+      <span class="fe-tb-label" id="fe-tpl-name">👋 Hello World</span>
+      <input class="fe-tb-route" id="fe-route" value="/api/hello" placeholder="/api/route">
+      <select class="fe-method-select" id="fe-method">
+        <option>GET</option><option>POST</option><option>PUT</option>
+        <option>DELETE</option><option>*</option>
+      </select>
+    </div>
+    <textarea class="fcode-big" id="fe-code" spellcheck="false"></textarea>
+    <div class="fe-actions">
+      <div class="fe-hint" id="fe-hint">Edit the code above, then deploy to your live cloud.</div>
+      <button class="btn-back" onclick="goTo(4)">← Back</button>
+      <button class="btn-next" id="btn-deploy-fn" onclick="deployFirstFn()">
+        ⚡ Deploy Function <span class="arrow">→</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Result card (shown after deploy) -->
+  <div class="fn-result" id="fn-result">
+    <div class="fn-result-hd">
+      <span class="fn-result-badge">✓ LIVE</span>
+      <span class="fn-result-url" id="fn-live-url">—</span>
+      <button class="suc-copy" onclick="copyFnUrl()">⎘ Copy URL</button>
+    </div>
+    <div class="fn-curl" id="fn-curl-cmd">—</div>
+  </div>
+
+  <span class="skip-link" onclick="finishSetup()">Skip — I'll deploy functions later</span>
+</section>
+</div>
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────
+const state = {
+  target: null,
+  step: 1,
+  deploying: false,
+  deployed: false,
+  currentPanel: 'basics',
+  currentTab: 'env',
+  currentGenTab: 'env',
+};
+
+const TARGET_META = {
+  docker:    { icon:'🐳', name:'Docker Compose', sub:'Local / any machine with Docker' },
+  flyio:     { icon:'🚀', name:'Fly.io',         sub:'35+ global regions, free tier available' },
+  hetzner:   { icon:'🖥', name:'Hetzner VPS',    sub:'EU data sovereignty, €4.35/mo' },
+  raspberry: { icon:'🫐', name:'Raspberry Pi',   sub:'ARM64, home lab, zero monthly cost' },
+  bare:      { icon:'⚙', name:'Bare Metal',      sub:'Ubuntu/Debian, systemd service' },
+  cluster:   { icon:'⬡', name:'Multi-Node',      sub:'HA cluster with Caddy load balancing' },
+};
+
+// ── Navigation ─────────────────────────────────────────────
+function goTo(n) {
+  if (n > 1 && !state.target) { toast('Please select a deployment target first', 'er'); return; }
+  if (n > 2 && !document.getElementById('cfg-name').value.trim()) { toast('Please fill in the basics first', 'er'); return; }
+  if (n === 3) buildDeploySteps();
+  if (n === 4 && !state.deployed) return;
+  if (n === 5 && !state.deployed) return;
+
+  state.step = n;
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('s' + n).classList.add('active');
+
+  // Update step pills
+  for (let i = 1; i <= 5; i++) {
+    const p = document.getElementById('pill-' + i);
+    if (!p) continue;
+    p.classList.remove('active','done');
+    if (i < n) p.classList.add('done');
+    if (i === n) p.classList.add('active');
+  }
+
+  if (n === 3) updateDeployScreen();
+  if (n === 2) setTimeout(() => updatePreview(), 100);
+  if (n === 4) { updateDeployScreen(); setTimeout(testConnection, 800); }
+  if (n === 5) initFnEditor();
+}
+
+// ── Target Selection ───────────────────────────────────────
+function selectTarget(el) {
+  document.querySelectorAll('.target').forEach(t => t.classList.remove('selected'));
+  el.classList.add('selected');
+  state.target = el.dataset.id;
+  document.getElementById('btn-s1-next').disabled = false;
+
+  const meta = TARGET_META[state.target];
+  document.getElementById('ts-icon').textContent = meta.icon;
+  document.getElementById('ts-name').textContent = meta.name;
+  document.getElementById('ts-sub').textContent = meta.sub;
+  document.getElementById('deploy-target-name').textContent = meta.name;
+}
+
+// ── Config panels ──────────────────────────────────────────
+function showPanel(name) {
+  document.querySelectorAll('.config-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.cfg-item').forEach(i => i.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+
+  const map = { basics:'ci-1', network:'ci-2', runtime:'ci-3', secrets:'ci-4', preview:'ci-5' };
+  document.getElementById(map[name]).classList.add('active');
+  state.currentPanel = name;
+
+  if (name === 'preview') updatePreview();
+}
+
+// ── Validation ─────────────────────────────────────────────
+function validateBasics() {
+  const name = document.getElementById('cfg-name').value.trim();
+  const token = document.getElementById('cfg-token').value.trim();
+  const ok = name.length > 0 && token.length >= 8;
+  document.getElementById('btn-s2-next').disabled = !ok;
+
+  const ci = document.getElementById('ci-1');
+  if (ok) { ci.classList.add('done'); document.getElementById('cs-1').textContent = '✓'; }
+  else { ci.classList.remove('done'); document.getElementById('cs-1').textContent = 'required'; }
+}
+
+function generateToken() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const token = 'sk-sovereign-' + Array.from({length:32}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+  document.getElementById('cfg-token').value = token;
+  document.getElementById('cfg-token').type = 'text';
+  setTimeout(() => document.getElementById('cfg-token').type = 'password', 3000);
+  validateBasics();
+  toast('Token generated — save it somewhere safe!', 'ok');
+}
+
+// ── Config Generation ──────────────────────────────────────
+function getCfg() {
+  return {
+    name:       document.getElementById('cfg-name').value.trim()  || 'my-sovereign-cloud',
+    token:      document.getElementById('cfg-token').value.trim() || 'CHANGE_ME',
+    port:       document.getElementById('cfg-port').value         || '8787',
+    region:     document.getElementById('cfg-region').value       || 'iad',
+    domain:     document.getElementById('cfg-domain').value.trim(),
+    cors:       document.getElementById('cfg-cors').value.trim()  || '*',
+    workers:    document.getElementById('cfg-workers').value      || '4',
+    timeout:    document.getElementById('cfg-timeout').value      || '30000',
+    rateLimit:  document.getElementById('cfg-ratelimit').value    || '600',
+    compress:   document.getElementById('t-compression').classList.contains('on'),
+    monitoring: document.getElementById('t-monitoring').classList.contains('on'),
+    anthropic:  document.getElementById('s-anthropic').value,
+    openai:     document.getElementById('s-openai').value,
+    stripe:     document.getElementById('s-stripe').value,
+    webhook:    document.getElementById('s-webhook').value,
+  };
+}
+
+function genEnv(c) {
+  return `<span class="cmt"># Sovereignly — Environment Configuration</span>
+<span class="cmt"># Generated by Sovereignly Deploy Wizard</span>
+
+<span class="cmt"># ── Identity ──────────────────────────────────</span>
+<span class="key">SOVEREIGN_NODE_ID</span>=<span class="str">primary</span>
+<span class="key">NODE_ENV</span>=<span class="str">production</span>
+
+<span class="cmt"># ── Server ────────────────────────────────────</span>
+<span class="key">PORT</span>=<span class="num">${c.port}</span>
+<span class="key">HOST</span>=<span class="str">0.0.0.0</span>
+<span class="key">ADMIN_TOKEN</span>=<span class="str">${c.token}</span>
+<span class="key">DATA_DIR</span>=<span class="str">/data</span>
+
+<span class="cmt"># ── Runtime ───────────────────────────────────</span>
+<span class="key">WORKER_POOL_SIZE</span>=<span class="num">${c.workers}</span>
+<span class="key">TIMEOUT_MS</span>=<span class="num">${c.timeout}</span>
+<span class="key">RATE_LIMIT</span>=<span class="num">${c.rateLimit}</span>
+<span class="key">CORS_ORIGINS</span>=<span class="str">${c.cors}</span>
+<span class="key">LOG_LEVEL</span>=<span class="str">minimal</span>
+${c.domain ? `\n<span class="key">SOVEREIGN_DOMAIN</span>=<span class="str">${c.domain}</span>` : ''}
+<span class="cmt"># ── Secrets (accessible in functions via SECRETS.get()) ──</span>
+${c.anthropic ? `<span class="key">SECRET_ANTHROPIC_KEY</span>=<span class="str">${c.anthropic}</span>\n` : '<span class="cmt"># SECRET_ANTHROPIC_KEY=sk-ant-…</span>\n'
+}${c.openai    ? `<span class="key">SECRET_OPENAI_KEY</span>=<span class="str">${c.openai}</span>\n`    : '<span class="cmt"># SECRET_OPENAI_KEY=sk-…</span>\n'
+}${c.stripe    ? `<span class="key">SECRET_STRIPE_KEY</span>=<span class="str">${c.stripe}</span>\n`    : '<span class="cmt"># SECRET_STRIPE_KEY=sk_live_…</span>\n'
+}${c.webhook   ? `<span class="key">SECRET_WEBHOOK_SECRET</span>=<span class="str">${c.webhook}</span>\n` : ''}`;
+}
+
+function genCompose(c) {
+  return `<span class="kw">version:</span> <span class="str">"3.9"</span>
+
+<span class="kw">networks:</span>
+  <span class="key">sovereign:</span> <span class="cmt">{driver: bridge}</span>
+
+<span class="kw">volumes:</span>
+  <span class="key">sovereign-data:</span>
+${c.domain ? `  <span class="key">caddy-data:</span>` : ''}
+
+<span class="kw">services:</span>
+  <span class="key">sovereign:</span>
+    <span class="kw">image:</span> <span class="str">oven/bun:1-alpine</span>
+    <span class="kw">container_name:</span> <span class="str">${c.name}</span>
+    <span class="kw">restart:</span> <span class="str">unless-stopped</span>
+    <span class="kw">working_dir:</span> <span class="str">/app</span>
+    <span class="kw">command:</span> <span class="str">["bun", "src/server.ts"]</span>
+    <span class="kw">env_file:</span> [<span class="str">.env</span>]
+    <span class="kw">ports:</span>
+      - <span class="str">"${c.port}:${c.port}"</span>
+    <span class="kw">volumes:</span>
+      - <span class="str">sovereign-data:/data</span>
+      - <span class="str">./src:/app/src:ro</span>
+      - <span class="str">./package.json:/app/package.json:ro</span>
+      - <span class="str">./node_modules:/app/node_modules:ro</span>
+    <span class="kw">networks:</span> [<span class="str">sovereign</span>]
+    <span class="kw">healthcheck:</span>
+      <span class="kw">test:</span> <span class="str">["CMD-SHELL", "bun -e \\"fetch('http://localhost:${c.port}/_sovereign/health').then(r=>process.exit(r.ok?0:1))\\""]</span>
+      <span class="kw">interval:</span> <span class="num">10s</span>
+      <span class="kw">retries:</span> <span class="num">3</span>
+${c.domain ? `
+  <span class="key">caddy:</span>
+    <span class="kw">image:</span> <span class="str">caddy:2-alpine</span>
+    <span class="kw">ports:</span> [<span class="str">"80:80"</span>, <span class="str">"443:443"</span>, <span class="str">"443:443/udp"</span>]
+    <span class="kw">volumes:</span>
+      - <span class="str">./deploy/Caddyfile:/etc/caddy/Caddyfile:ro</span>
+      - <span class="str">caddy-data:/data</span>
+    <span class="kw">networks:</span> [<span class="str">sovereign</span>]
+` : ''}${c.monitoring ? `
+  <span class="key">prometheus:</span>
+    <span class="kw">image:</span> <span class="str">prom/prometheus:latest</span>
+    <span class="kw">ports:</span> [<span class="str">"9090:9090"</span>]
+    <span class="kw">networks:</span> [<span class="str">sovereign</span>]
+
+  <span class="key">grafana:</span>
+    <span class="kw">image:</span> <span class="str">grafana/grafana-oss:latest</span>
+    <span class="kw">ports:</span> [<span class="str">"3001:3000"</span>]
+    <span class="kw">networks:</span> [<span class="str">sovereign</span>]
+` : ''}`;
+}
+
+function genFly(c) {
+  return `<span class="key">app</span> = <span class="str">"${c.name}"</span>
+<span class="key">primary_region</span> = <span class="str">"${c.region === 'local' ? 'iad' : c.region}"</span>
+
+[<span class="kw">build</span>]
+  <span class="key">dockerfile</span> = <span class="str">"Dockerfile"</span>
+
+[<span class="kw">env</span>]
+  <span class="key">PORT</span>             = <span class="str">"8080"</span>
+  <span class="key">NODE_ENV</span>         = <span class="str">"production"</span>
+  <span class="key">WORKER_POOL_SIZE</span> = <span class="str">"${c.workers}"</span>
+  <span class="key">TIMEOUT_MS</span>       = <span class="str">"${c.timeout}"</span>
+  <span class="key">RATE_LIMIT</span>       = <span class="str">"${c.rateLimit}"</span>
+  <span class="key">LOG_LEVEL</span>        = <span class="str">"minimal"</span>
+
+[<span class="kw">http_service</span>]
+  <span class="key">internal_port</span>       = <span class="num">8080</span>
+  <span class="key">force_https</span>         = <span class="kw">true</span>
+  <span class="key">auto_stop_machines</span>  = <span class="kw">true</span>
+  <span class="key">auto_start_machines</span> = <span class="kw">true</span>
+  <span class="key">min_machines_running</span> = <span class="num">0</span>
+
+[[<span class="kw">vm</span>]]
+  <span class="key">size</span>   = <span class="str">"shared-cpu-1x"</span>
+  <span class="key">memory</span> = <span class="str">"256mb"</span>
+
+[[<span class="kw">mounts</span>]]
+  <span class="key">source</span>      = <span class="str">"${c.name}_data"</span>
+  <span class="key">destination</span> = <span class="str">"/data"</span>
+
+<span class="cmt"># Deploy: fly launch && fly secret set ADMIN_TOKEN=${c.token.slice(0,12)}…</span>
+<span class="cmt"># Scale:  fly scale count 3 --region ${c.region === 'local' ? 'iad' : c.region},cdg,nrt</span>`;
+}
+
+function genInstall(c) {
+  return `<span class="cmt">#!/bin/bash</span>
+<span class="cmt"># Sovereignly — Automated Install Script</span>
+<span class="cmt"># Target: ${TARGET_META[state.target]?.name} | Generated by Deploy Wizard</span>
+<span class="kw">set</span> <span class="str">-euo pipefail</span>
+
+<span class="key">APP_NAME</span>=<span class="str">"${c.name}"</span>
+<span class="key">PORT</span>=<span class="str">"${c.port}"</span>
+<span class="key">DATA_DIR</span>=<span class="str">"/opt/sovereign/data"</span>
+
+<span class="cmt"># ── 1. Install Bun ─────────────────────────────────────────</span>
+<span class="kw">if</span> ! command -v bun &amp;&gt;/dev/null; <span class="kw">then</span>
+  <span class="key">echo</span> <span class="str">"→ Installing Bun…"</span>
+  curl -fsSL https://bun.sh/install | bash
+  <span class="kw">export</span> PATH=<span class="str">"$HOME/.bun/bin:$PATH"</span>
+<span class="kw">fi</span>
+<span class="key">echo</span> <span class="str">"✓ Bun $(bun --version)"</span>
+
+<span class="cmt"># ── 2. Clone & install ─────────────────────────────────────</span>
+mkdir -p /opt/sovereign
+git clone https://github.com/metacognixion/sovereign-cloud /opt/sovereign/app
+cd /opt/sovereign/app
+bun install
+
+<span class="cmt"># ── 3. Write .env ──────────────────────────────────────────</span>
+cat &gt; /opt/sovereign/app/.env &lt;&lt; <span class="str">EOF</span>
+SOVEREIGN_NODE_ID=primary
+PORT=${c.port}
+DATA_DIR=$DATA_DIR
+ADMIN_TOKEN=${c.token}
+WORKER_POOL_SIZE=${c.workers}
+TIMEOUT_MS=${c.timeout}
+RATE_LIMIT=${c.rateLimit}
+<span class="str">EOF</span>
+mkdir -p "$DATA_DIR"
+
+<span class="cmt"># ── 4. Create systemd service ───────────────────────────────</span>
+cat &gt; /etc/systemd/system/sovereign.service &lt;&lt; <span class="str">EOF</span>
+[Unit]
+Description=Sovereignly v3
+After=network.target
+
+[Service]
+Type=simple
+User=sovereign
+WorkingDirectory=/opt/sovereign/app
+ExecStart=/root/.bun/bin/bun src/server.ts
+Restart=always
+RestartSec=5
+EnvironmentFile=/opt/sovereign/app/.env
+
+[Install]
+WantedBy=multi-user.target
+<span class="str">EOF</span>
+
+<span class="cmt"># ── 5. Start ─────────────────────────────────────────────</span>
+systemctl daemon-reload
+systemctl enable sovereign
+systemctl start sovereign
+systemctl status sovereign
+
+<span class="key">echo</span> <span class="str">""</span>
+<span class="key">echo</span> <span class="str">"✓ Sovereignly running at http://$(hostname -I | awk '{print $1}'):${c.port}"</span>
+<span class="key">echo</span> <span class="str">"  Health: curl http://localhost:${c.port}/_sovereign/health"</span>`;
+}
+
+function genCaddy(c) {
+  const domain = c.domain || 'localhost';
+  const useTLS = c.domain && !c.domain.startsWith('localhost');
+  return `<span class="cmt"># Sovereignly v3 — Caddyfile</span>
+<span class="cmt"># Auto-provisioned TLS via Let's Encrypt${useTLS ? '' : ' (disabled for localhost)'}</span>
+<span class="cmt"># HTTP/3 (QUIC) enabled by default in Caddy 2</span>
+
+${useTLS ? `<span class="kw">${domain}</span> {` : `<span class="kw">:80</span> {`}
+
+  <span class="cmt"># Compression</span>
+  <span class="key">encode</span> <span class="val">zstd gzip</span>
+
+  <span class="cmt"># Security headers</span>
+  <span class="key">header</span> {
+    <span class="val">X-Frame-Options</span>         <span class="str">DENY</span>
+    <span class="val">X-Content-Type-Options</span>  <span class="str">nosniff</span>
+    <span class="val">Referrer-Policy</span>         <span class="str">strict-origin-when-cross-origin</span>
+    <span class="val">X-Sovereign</span>             <span class="str">2.0</span>
+    <span class="val">-Server</span>
+  }
+
+  <span class="cmt"># Rate limiting (requires caddy-ratelimit plugin)</span>
+  <span class="cmt"># rate_limit {remote.ip} 600r/m</span>
+
+  <span class="cmt"># Reverse proxy to Bun gateway</span>
+  <span class="key">reverse_proxy</span> <span class="val">sovereign:${c.port}</span> {
+    <span class="key">health_uri</span>      <span class="str">/_sovereign/health</span>
+    <span class="key">health_interval</span> <span class="num">10s</span>
+    <span class="key">health_timeout</span>  <span class="num">3s</span>
+    <span class="key">lb_policy</span>       <span class="val">round_robin</span>
+
+    <span class="cmt"># Add request ID if not present</span>
+    <span class="key">header_up</span> <span class="val">X-Real-IP</span> <span class="str">{remote_host}</span>
+    <span class="key">header_up</span> <span class="val">X-Forwarded-For</span> <span class="str">{remote_host}</span>
+  }
+
+  <span class="cmt"># Access log</span>
+  <span class="key">log</span> {
+    <span class="key">output</span>  <span class="val">file /data/logs/access.log</span>
+    <span class="key">format</span>  <span class="val">json</span>
+    <span class="key">level</span>   <span class="val">INFO</span>
+  }
+${useTLS ? `
+  <span class="cmt"># Let's Encrypt TLS</span>
+  <span class="key">tls</span> <span class="str">${c.domain.includes('@') ? c.domain : 'admin@' + domain}</span>
+` : ''}
+}
+
+<span class="cmt"># HTTP → HTTPS redirect (only with a real domain)</span>
+${useTLS ? `<span class="kw">http://${domain}</span> { <span class="key">redir</span> <span class="val">https://{host}{uri}</span> <span class="num">301</span> }` : '<span class="cmt"># (add domain to .env to enable auto-TLS)</span>'}`;
+}
+
+function updatePreview() {
+  const c = getCfg();
+  const generators = { env: genEnv, compose: genCompose, fly: genFly, caddy: genCaddy, script: genInstall };
+  const gen = generators[state.currentTab] ?? genEnv;
+  document.getElementById('cv-text').innerHTML = gen(c);
+}
+
+function switchTab(tab, el) {
+  state.currentTab = tab;
+  document.querySelectorAll('#panel-preview .cv-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  updatePreview();
+}
+
+function switchGenTab(tab, el) {
+  state.currentGenTab = tab;
+  document.querySelectorAll('#gen-tabs .cv-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const c = getCfg();
+  const generators = { env: genEnv, compose: genCompose, fly: genFly, caddy: genCaddy, install: genInstall };
+  document.getElementById('gen-config-text').innerHTML = (generators[tab] ?? genEnv)(c);
+}
+
+function copyConfig() {
+  const c = getCfg();
+  const generators = { env: genEnv, compose: genCompose, fly: genFly, script: genInstall };
+  const plain = (generators[state.currentTab]?.(c) ?? '').replace(/<[^>]+>/g,'');
+  navigator.clipboard.writeText(plain).then(() => toast('Copied!','ok'));
+}
+
+function copyGenConfig() {
+  const c = getCfg();
+  const generators = { env: genEnv, compose: genCompose, fly: genFly, install: genInstall };
+  const plain = (generators[state.currentGenTab]?.(c) ?? '').replace(/<[^>]+>/g,'');
+  navigator.clipboard.writeText(plain).then(() => toast('Copied!','ok'));
+}
+
+// ── Deploy screen ──────────────────────────────────────────
+const DEPLOY_STEPS = {
+  docker: [
+    { name: 'Validate configuration', detail: 'Checking .env and compose settings…' },
+    { name: 'Generate config files',   detail: 'Writing docker-compose.yml and .env…' },
+    { name: 'Pull Bun image',           detail: 'docker pull oven/bun:1-alpine' },
+    { name: 'Build containers',         detail: 'docker compose build sovereign' },
+    { name: 'Start services',           detail: 'docker compose up -d' },
+    { name: 'Health check',             detail: 'Waiting for /_sovereign/health → 200' },
+    { name: 'Register example functions', detail: 'Deploying hello, echo, kv-demo' },
+  ],
+  flyio: [
+    { name: 'Validate fly CLI',         detail: 'Checking fly auth status…' },
+    { name: 'Generate fly.toml',        detail: 'Writing configuration for Fly.io…' },
+    { name: 'Create persistent volume', detail: 'fly volumes create sovereign_data' },
+    { name: 'Set secrets',              detail: 'fly secrets set ADMIN_TOKEN=…' },
+    { name: 'Deploy to edge',           detail: 'fly deploy --strategy rolling' },
+    { name: 'Verify deployment',        detail: 'fly status && fly checks list' },
+    { name: 'Open tunnel',              detail: 'Routing traffic to your cloud…' },
+  ],
+  hetzner: [
+    { name: 'Validate SSH connection',  detail: 'Testing SSH to Hetzner server…' },
+    { name: 'Install Bun runtime',      detail: 'curl -fsSL https://bun.sh/install | bash' },
+    { name: 'Upload source files',      detail: 'scp -r ./src ./package.json server:~/sovereign/' },
+    { name: 'Install dependencies',     detail: 'bun install --production' },
+    { name: 'Write systemd service',    detail: 'Creating /etc/systemd/system/sovereign.service' },
+    { name: 'Enable & start service',   detail: 'systemctl enable --now sovereign' },
+    { name: 'Configure firewall',       detail: 'ufw allow 8787/tcp' },
+  ],
+  raspberry: [
+    { name: 'Check ARM64 compatibility', detail: 'Verifying Bun ARM64 binary…' },
+    { name: 'Install Bun on Pi',         detail: 'curl -fsSL https://bun.sh/install | bash' },
+    { name: 'Clone repository',          detail: 'git clone …/sovereign-cloud' },
+    { name: 'Install dependencies',      detail: 'bun install' },
+    { name: 'Write .env file',           detail: 'Creating configuration…' },
+    { name: 'Start server',              detail: 'bun --hot src/server.ts' },
+    { name: 'Setup PM2 for persistence', detail: 'pm2 start ecosystem.config.js' },
+  ],
+  bare: [
+    { name: 'Generate install.sh',      detail: 'Writing automated install script…' },
+    { name: 'SSH connection test',      detail: 'Verifying server access…' },
+    { name: 'Run install script',       detail: 'bash <(curl -fsSL ./install.sh)' },
+    { name: 'Write systemd service',    detail: 'Creating sovereign.service unit…' },
+    { name: 'Start & enable service',   detail: 'systemctl enable --now sovereign' },
+    { name: 'Verify health endpoint',   detail: 'curl /_sovereign/health' },
+  ],
+  cluster: [
+    { name: 'Generate cluster config',  detail: 'Writing multi-node docker-compose…' },
+    { name: 'Setup primary node',       detail: 'Deploying sovereign-primary…' },
+    { name: 'Setup replica nodes',      detail: 'Deploying sovereign-replica-1, -2…' },
+    { name: 'Configure Caddy LB',       detail: 'Writing upstream config for 3 nodes…' },
+    { name: 'Setup Litestream sync',    detail: 'Configuring SQLite WAL replication…' },
+    { name: 'Test load balancing',      detail: 'Verifying round-robin routing…' },
+    { name: 'Cluster health check',     detail: 'All nodes reporting healthy…' },
+  ],
+};
+
+function buildDeploySteps() {
+  const steps = DEPLOY_STEPS[state.target] ?? DEPLOY_STEPS.docker;
+  const container = document.getElementById('deploy-steps');
+  container.innerHTML = steps.map((s, i) => `
+    <div class="step-row" id="dstep-${i}">
+      <div class="step-indicator">${i+1}</div>
+      <div class="step-content">
+        <div class="step-name">${s.name}</div>
+        <div class="step-detail" id="dstep-detail-${i}">—</div>
+      </div>
+      <div class="step-time" id="dstep-time-${i}"></div>
+    </div>
+  `).join('');
+}
+
+function updateDeployScreen() {
+  const meta = TARGET_META[state.target];
+  document.getElementById('deploy-target-name').textContent = meta.name;
+  const c = getCfg();
+  document.getElementById('gen-config-text').innerHTML = genEnv(c);
+
+  const url = state.target === 'flyio'
+    ? `https://${c.name}.fly.dev`
+    : (c.domain ? `https://${c.domain}` : `http://localhost:${c.port}`);
+  document.getElementById('live-url').textContent = url;
+  document.getElementById('ls-workers').textContent = c.workers;
+}
+
+// ── Simulated deployment ───────────────────────────────────
+let deployStepIndex = 0;
+const TERMINAL_LINES = {
+  docker: [
+    ['cmd', '$ sovereign validate'],
+    ['ok',  '✓ Config validated'],
+    ['cmd', '$ docker compose config --quiet'],
+    ['ok',  '✓ Compose file valid'],
+    ['cmd', '$ docker pull oven/bun:1-alpine'],
+    ['out', 'Pulling from oven/bun…'],
+    ['out', 'Status: Image is up to date'],
+    ['cmd', '$ docker compose build'],
+    ['out', '[+] Building 3.2s (12/12) FINISHED'],
+    ['cmd', '$ docker compose up -d'],
+    ['out', 'Container sovereign-primary  Starting'],
+    ['ok',  'Container sovereign-primary  Started'],
+    ['cmd', '$ curl -s http://localhost:8787/_sovereign/health'],
+    ['ok',  '{"ok":true,"runtime":"bun","bunVersion":"1.x"}'],
+    ['ok',  '✓ Sovereignly is live!'],
+  ],
+  flyio: [
+    ['cmd', '$ fly auth status'],
+    ['ok',  '✓ Logged in as jp@metacognixion.com'],
+    ['cmd', '$ fly apps create my-sovereign-cloud'],
+    ['out', 'New app created: my-sovereign-cloud'],
+    ['cmd', '$ fly volumes create sovereign_data --size 5'],
+    ['out', 'vol_abc123: created in iad'],
+    ['cmd', '$ fly secrets set ADMIN_TOKEN=sk-sovereign-…'],
+    ['ok',  'Secrets are staged for the first deployment'],
+    ['cmd', '$ fly deploy --strategy rolling'],
+    ['out', '==> Deploying…'],
+    ['out', '--> Building image'],
+    ['out', '--> Pushing image'],
+    ['out', '--> Creating release'],
+    ['ok',  '✓ Deployed to 3 machines in iad'],
+    ['ok',  '✓ Visit: https://my-sovereign-cloud.fly.dev'],
+  ],
+  default: [
+    ['cmd', '$ sovereign deploy --target ' + (state?.target ?? 'docker')],
+    ['out', 'Reading configuration…'],
+    ['ok',  '✓ Config valid'],
+    ['cmd', '$ installing bun runtime'],
+    ['out', 'Downloading bun 1.x for linux-x64…'],
+    ['ok',  '✓ bun 1.x installed'],
+    ['cmd', '$ bun install'],
+    ['out', '[1/2] Resolving dependencies'],
+    ['ok',  '✓ bun install complete'],
+    ['cmd', '$ writing .env'],
+    ['ok',  '✓ Environment configured'],
+    ['cmd', '$ bun src/server.ts'],
+    ['out', 'Sovereignly v3 starting…'],
+    ['ok',  '✓ Ready — http://localhost:8787'],
+  ],
+};
+
+async function startDeploy() {
+  if (state.deploying) return;
+  state.deploying = true;
+
+  const btn = document.getElementById('launch-btn');
+  const ring = document.getElementById('launch-ring');
+  btn.classList.add('running');
+  btn.innerHTML = '<span class="launch-icon" style="font-size:22px;animation:spin 2s linear infinite;display:inline-block">⬡</span>';
+  ring.classList.add('spinning');
+  document.getElementById('btn-s3-back').disabled = true;
+
+  // Clear terminal
+  const term = document.getElementById('term-body');
+  term.innerHTML = '';
+
+  const steps = DEPLOY_STEPS[state.target] ?? DEPLOY_STEPS.docker;
+  const termLines = TERMINAL_LINES[state.target] ?? TERMINAL_LINES.default;
+
+  // Run terminal lines in parallel with steps
+  const termPromise = runTerminal(termLines);
+  const stepsPromise = runDeploySteps(steps);
+
+  await Promise.all([termPromise, stepsPromise]);
+
+  // Complete
+  state.deploying = false;
+  state.deployed = true;
+
+  btn.classList.remove('running');
+  btn.classList.add('done');
+  btn.innerHTML = '<span class="launch-icon">✓</span><span style="font-size:11px">LIVE</span>';
+  ring.classList.remove('spinning');
+
+  // Auto-advance after 1.5s
+  setTimeout(() => {
+    goTo(4);
+    for (let i = 1; i <= 4; i++) document.getElementById('pill-'+i).classList.add('done');
+  }, 1500);
+}
+
+async function runTerminal(lines) {
+  const term = document.getElementById('term-body');
+  for (const [type, text] of lines) {
+    await delay(150 + Math.random() * 200);
+    const line = document.createElement('div');
+    line.className = 'tline';
+    if (type === 'cmd') {
+      line.innerHTML = `<span class="tprompt">$</span><span class="tcmd"> ${text.replace(/^\$ /,'')}</span>`;
+    } else if (type === 'ok') {
+      line.innerHTML = `<span class="tok">${text}</span>`;
+    } else if (type === 'warn') {
+      line.innerHTML = `<span class="twarn">${text}</span>`;
+    } else {
+      line.innerHTML = `<span class="tout">${text}</span>`;
+    }
+    term.appendChild(line);
+    term.scrollTop = term.scrollHeight;
+  }
+}
+
+async function runDeploySteps(steps) {
+  for (let i = 0; i < steps.length; i++) {
+    const row = document.getElementById('dstep-' + i);
+    const detail = document.getElementById('dstep-detail-' + i);
+    const timeEl = document.getElementById('dstep-time-' + i);
+    if (!row) continue;
+
+    row.classList.add('active');
+    detail.textContent = steps[i].detail;
+
+    const ms = 400 + Math.random() * 600;
+    const start = Date.now();
+    await delay(ms);
+    const elapsed = ((Date.now() - start) / 1000).toFixed(2);
+
+    row.classList.remove('active');
+    row.classList.add('done');
+    row.querySelector('.step-indicator').textContent = '✓';
+    timeEl.textContent = elapsed + 's';
+  }
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Success screen ─────────────────────────────────────────
+function openDashboard() {
+  const c = getCfg();
+  const url = state.target === 'flyio'
+    ? `https://${c.name}.fly.dev/_sovereign/health`
+    : `http://localhost:${c.port}/_sovereign/health`;
+  window.open(url, '_blank');
+}
+
+function deployFunction() {
+  const c = getCfg();
+  const url = state.target === 'flyio' ? `https://${c.name}.fly.dev` : `http://localhost:${c.port}`;
+  const code = `curl -X POST ${url}/_sovereign/functions \\
+  -H 'content-type: application/json' \\
+  -H 'x-sovereign-token: ${c.token}' \\
+  -d '{
+    "id": "my-function",
+    "route": "/api/hello",
+    "methods": ["GET"],
+    "code": "async function handler(req) { return Response.json({ ok: true }); }"
+  }'`;
+  navigator.clipboard.writeText(code).then(() => toast('Deploy command copied!', 'ok'));
+}
+
+function copyUrl() {
+  const url = document.getElementById('live-url').textContent;
+  navigator.clipboard.writeText(url).then(() => toast('URL copied!', 'ok'));
+}
+
+function downloadAll() {
+  const c = getCfg();
+  const files = [
+    { name: '.env',               content: genEnv(c).replace(/<[^>]+>/g,'') },
+    { name: 'docker-compose.yml', content: genCompose(c).replace(/<[^>]+>/g,'') },
+    { name: 'fly.toml',           content: genFly(c).replace(/<[^>]+>/g,'') },
+    { name: 'Caddyfile',          content: genCaddy(c).replace(/<[^>]+>/g,'') },
+    { name: 'install.sh',         content: genInstall(c).replace(/<[^>]+>/g,'') },
+  ];
+  files.forEach(f => {
+    const blob = new Blob([f.content], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = f.name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  toast('5 config files downloaded!', 'ok');
+}
+
+// ── Connection test ────────────────────────────────────────
+async function testConnection() {
+  const c = getCfg();
+  const url = state.target === 'flyio'
+    ? `https://${c.name}.fly.dev`
+    : (c.domain ? `https://${c.domain}` : `http://localhost:${c.port}`);
+
+  const dot  = document.getElementById('conn-dot');
+  const text = document.getElementById('conn-text');
+  if (!dot || !text) return;
+
+  dot.style.background = 'var(--amber)';
+  text.textContent = `Pinging ${url}/_sovereign/health…`;
+
+  try {
+    const r = await fetch(`${url}/_sovereign/health`, { signal: AbortSignal.timeout(4000) });
+    const data = await r.json();
+    dot.style.background   = 'var(--green)';
+    dot.style.boxShadow    = '0 0 6px var(--green)';
+    dot.style.animation    = 'pulse 2s infinite';
+    text.textContent       = `✓ Connected — Bun ${data.bunVersion ?? '?'} · ${data.workers?.total ?? '?'} workers`;
+    text.style.color       = 'var(--green)';
+    document.getElementById('ls-workers').textContent = data.workers?.total ?? '4';
+  } catch {
+    dot.style.background = 'var(--muted)';
+    text.textContent     = 'Could not reach cloud — may still be starting up';
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  SCREEN 5 — FUNCTION TEMPLATES & EDITOR
+// ══════════════════════════════════════════════════════════
+
+const TEMPLATES = {
+  hello: {
+    name: '👋 Hello World',
+    route: '/api/hello',
+    method: 'GET',
+    hint: 'Try: curl http://localhost:8787/api/hello?name=JP',
+    code: `async function handler(req, env) {
+  const url   = new URL(req.url);
+  const name  = url.searchParams.get('name') ?? 'World';
+  const ts    = new Date().toISOString();
+
+  return Response.json({
+    message:  \`Hello, \${name}!\`,
+    ts,
+    sovereign: true,
+    runtime:  'bun',
+  });
+}`,
+  },
+
+  ai: {
+    name: '🤖 AI Chat Proxy',
+    route: '/api/chat',
+    method: 'POST',
+    hint: 'Set SECRET_ANTHROPIC_KEY in your .env. Proxies to Claude with CORS pre-handled.',
+    code: `async function handler(req, env) {
+  // SECRETS.get() reads from process.env.SECRET_<NAME>
+  const apiKey = SECRETS.get('ANTHROPIC_KEY');
+  if (!apiKey) return Response.json({ error: 'ANTHROPIC_KEY not set' }, { status: 500 });
+
+  const { messages, model = 'claude-sonnet-4-5' } = await req.json();
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type':          'application/json',
+      'x-api-key':             apiKey,
+      'anthropic-version':     '2023-06-01',
+    },
+    body: JSON.stringify({ model, max_tokens: 1024, messages }),
+  });
+
+  const data = await res.json();
+  return Response.json(data, { status: res.status });
+}`,
+  },
+
+  webhook: {
+    name: '🔔 Webhook Handler',
+    route: '/hooks/events',
+    method: 'POST',
+    hint: 'Stores events in KV with a 7-day TTL. Verify HMAC signature from SECRETS.get("WEBHOOK_SECRET").',
+    code: `async function handler(req, env) {
+  const secret = SECRETS.get('WEBHOOK_SECRET');
+
+  // Optional HMAC verification
+  if (secret) {
+    const sig  = req.headers.get('x-signature-256')?.replace('sha256=', '') ?? '';
+    const body = await req.text();
+    const encoder = new TextEncoder();
+    const key  = await crypto.subtle.importKey(
+      'raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    );
+    const mac  = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
+    const hex  = Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2,'0')).join('');
+    if (hex !== sig) return Response.json({ error: 'Invalid signature' }, { status: 401 });
+    var payload = JSON.parse(body);
+  } else {
+    var payload = await req.json();
+  }
+
+  // Persist with 7-day TTL
+  const id  = crypto.randomUUID();
+  KV.set('event:' + id, JSON.stringify({ ...payload, receivedAt: new Date().toISOString() }), { ttl: 604800 });
+  KV.incr('events:total');
+
+  return Response.json({ ok: true, id });
+}`,
+  },
+
+  kv: {
+    name: '🗄 KV REST API',
+    route: '/store/:key',
+    method: '*',
+    hint: 'Full CRUD: GET /store/mykey · POST /store/mykey {"value":"x","ttl":3600} · DELETE /store/mykey',
+    code: `async function handler(req, env) {
+  const url    = new URL(req.url);
+  const key    = url.pathname.split('/').filter(Boolean).pop() ?? '';
+  const method = req.method.toUpperCase();
+
+  if (!key) return Response.json({ error: 'Key required' }, { status: 400 });
+
+  if (method === 'GET') {
+    const value = KV.get(key);
+    if (value === null) return Response.json({ error: 'Not found' }, { status: 404 });
+    return Response.json({ key, value });
+  }
+
+  if (method === 'POST' || method === 'PUT') {
+    const { value, ttl } = await req.json();
+    KV.set(key, String(value), { ttl });
+    return Response.json({ ok: true, key, value, ttl });
+  }
+
+  if (method === 'DELETE') {
+    KV.delete(key);
+    return Response.json({ ok: true, deleted: key });
+  }
+
+  return Response.json({ error: 'Method not allowed' }, { status: 405 });
+}`,
+  },
+
+  analytics: {
+    name: '📊 Analytics Tracker',
+    route: '/track',
+    method: 'POST',
+    hint: 'POST {"event":"pageview","path":"/home"} to track. GET /track/stats to see totals.',
+    code: `async function handler(req, env) {
+  const url    = new URL(req.url);
+  const method = req.method.toUpperCase();
+
+  // GET /track/stats
+  if (method === 'GET') {
+    const keys  = KV.list('ev:');
+    const stats = keys.map(({ key }) => ({ event: key.replace('ev:',''), count: parseInt(KV.get(key) ?? '0') }));
+    return Response.json({ stats, total: stats.reduce((s,e) => s + e.count, 0) });
+  }
+
+  // POST to track
+  const { event = 'pageview', path = '/', uid } = await req.json();
+
+  KV.incr('ev:' + event);
+  KV.incr('ev:path:' + path);
+  if (uid) KV.set('uid:' + uid, Date.now().toString(), { ttl: 86400 });
+
+  const totalVisitors = KV.list('uid:').length;
+
+  return Response.json({
+    ok:      true,
+    event,
+    count:   parseInt(KV.get('ev:' + event) ?? '1'),
+    visitors: totalVisitors,
+  });
+}`,
+  },
+
+  cron: {
+    name: '⏱ Scheduled Job',
+    route: '/cron/fetch',
+    method: 'GET',
+    hint: 'Schedule with: scheduler.schedule("cron-fetch", "@hourly"). Stores result in KV.',
+    code: `async function handler(req, env) {
+  // This function can be triggered by the scheduler:
+  //   scheduler.schedule('cron-fetch', '0 * * * *')
+  // Or called directly via HTTP.
+
+  const TARGET_URL = env.FETCH_URL ?? 'https://hacker-news.firebaseio.com/v0/topstories.json';
+
+  try {
+    const res  = await fetch(TARGET_URL, { signal: AbortSignal.timeout(10000) });
+    const data = await res.text();
+
+    KV.set('cron:last_result',  data,                              { ttl: 7200 });
+    KV.set('cron:last_fetched', new Date().toISOString());
+    KV.incr('cron:run_count');
+
+    return Response.json({
+      ok:      true,
+      url:     TARGET_URL,
+      size:    data.length,
+      runs:    parseInt(KV.get('cron:run_count') ?? '1'),
+      fetched: KV.get('cron:last_fetched'),
+    });
+  } catch (err) {
+    return Response.json({ ok: false, error: err.message }, { status: 500 });
+  }
+}`,
+  },
+
+  auth: {
+    name: '🔐 JWT Auth',
+    route: '/auth/token',
+    method: 'POST',
+    hint: 'POST {"user":"jp","pass":"…"} to get a JWT. Verify with SECRETS.get("JWT_SECRET").',
+    code: `// Minimal JWT (HMAC-SHA256) — no dependencies
+async function signJWT(payload, secret) {
+  const header   = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).replace(/=/g,'');
+  const body     = btoa(JSON.stringify(payload)).replace(/=/g,'');
+  const data     = \`\${header}.\${body}\`;
+  const encoder  = new TextEncoder();
+  const key      = await crypto.subtle.importKey('raw', encoder.encode(secret),
+    { name:'HMAC', hash:'SHA-256' }, false, ['sign']);
+  const sig      = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
+  const sigB64   = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=/g,'').replace(/\\+/g,'-').replace(/\\//g,'_');
+  return \`\${data}.\${sigB64}\`;
+}
+
+async function handler(req, env) {
+  const { user, pass } = await req.json();
+  const secret = SECRETS.get('JWT_SECRET') ?? 'dev-secret-change-me';
+
+  // Replace with real auth logic
+  if (!user || !pass) return Response.json({ error: 'user and pass required' }, { status: 400 });
+
+  const exp   = Math.floor(Date.now() / 1000) + 3600; // 1h
+  const token = await signJWT({ sub: user, exp, iat: Math.floor(Date.now()/1000) }, secret);
+
+  KV.set('session:' + token.slice(-8), user, { ttl: 3600 });
+
+  return Response.json({ token, expiresIn: 3600, type: 'Bearer' });
+}`,
+  },
+
+  og: {
+    name: '🖼 OG Image',
+    route: '/og',
+    method: 'GET',
+    hint: 'GET /og?title=Hello&sub=World returns an SVG image for social sharing.',
+    code: `async function handler(req, env) {
+  const url   = new URL(req.url);
+  const title = url.searchParams.get('title') ?? 'Sovereignly';
+  const sub   = url.searchParams.get('sub')   ?? 'Serverless · Sovereign · Open Source';
+  const bg    = url.searchParams.get('bg')    ?? '09090a';
+  const fg    = url.searchParams.get('fg')    ?? 'c8f135';
+
+  const svg = \`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#\${bg}"/>
+  <rect x="0" y="0" width="1200" height="4" fill="#\${fg}"/>
+  <!-- Grid lines -->
+  <path d="M0 0 L1200 630 M0 630 L1200 0" stroke="#\${fg}" stroke-width=".5" opacity=".05"/>
+  <!-- Logo mark -->
+  <polygon points="100,80 120,44 140,80 120,116" fill="none" stroke="#\${fg}" stroke-width="2" opacity=".8"/>
+  <!-- Title -->
+  <text x="100" y="310" font-family="system-ui, sans-serif" font-size="72" font-weight="900" fill="#f0f0f2" letter-spacing="-2">\${title}</text>
+  <!-- Subtitle -->
+  <text x="102" y="370" font-family="monospace" font-size="24" fill="#4a4a56">\${sub}</text>
+  <!-- Domain -->
+  <text x="100" y="570" font-family="monospace" font-size="18" fill="#\${fg}" opacity=".7">sovereign.cloud</text>
+</svg>\`;
+
+  return new Response(svg, {
+    headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=3600' }
+  });
+}`,
+  },
+};
+
+let currentTpl = 'hello';
+
+function pickTpl(el) {
+  document.querySelectorAll('.tpl').forEach(t => t.classList.remove('selected'));
+  el.classList.add('selected');
+  currentTpl = el.dataset.tpl;
+  loadTplIntoEditor(currentTpl);
+}
+
+function loadTplIntoEditor(id) {
+  const tpl = TEMPLATES[id];
+  if (!tpl) return;
+  document.getElementById('fe-tpl-name').textContent = tpl.name;
+  document.getElementById('fe-route').value           = tpl.route;
+  document.getElementById('fe-method').value          = tpl.method;
+  document.getElementById('fe-code').value            = tpl.code;
+  document.getElementById('fe-hint').textContent      = tpl.hint;
+  document.getElementById('fn-result').classList.remove('visible');
+}
+
+function initFnEditor() {
+  loadTplIntoEditor(currentTpl);
+}
+
+async function deployFirstFn() {
+  const c       = getCfg();
+  const baseUrl = state.target === 'flyio'
+    ? `https://${c.name}.fly.dev`
+    : (c.domain ? `https://${c.domain}` : `http://localhost:${c.port}`);
+
+  const id     = 'fn-' + currentTpl + '-' + Date.now().toString(36);
+  const route  = document.getElementById('fe-route').value.trim() || '/api/fn';
+  const method = document.getElementById('fe-method').value;
+  const code   = document.getElementById('fe-code').value;
+
+  const btn = document.getElementById('btn-deploy-fn');
+  btn.disabled = true;
+  btn.innerHTML = '⬡ Deploying…';
+
+  try {
+    const res = await fetch(`${baseUrl}/_sovereign/functions`, {
+      method: 'POST',
+      headers: {
+        'content-type':       'application/json',
+        'x-sovereign-token':  c.token,
+      },
+      body: JSON.stringify({ id, name: TEMPLATES[currentTpl]?.name ?? id, route, methods: [method === '*' ? '*' : method], code }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      const liveUrl = `${baseUrl}${route}`;
+      document.getElementById('fn-live-url').textContent = liveUrl;
+
+      const curlMethod = method === '*' ? 'GET' : method;
+      const curlBody   = ['POST','PUT','PATCH'].includes(curlMethod)
+        ? `\n  <span class="hlt2">-d</span> <span class="hlt3">'{"key":"value"}'</span>` : '';
+
+      document.getElementById('fn-curl-cmd').innerHTML =
+        `<span class="hlt">curl</span> -X ${curlMethod} <span class="hlt3">${liveUrl}</span>${curlBody}`;
+
+      document.getElementById('fn-result').classList.add('visible');
+      toast(`✓ ${TEMPLATES[currentTpl]?.name ?? id} deployed!`, 'ok');
+    } else {
+      toast('Deploy failed: ' + (data?.error ?? res.status), 'er');
+    }
+  } catch (err) {
+    // Simulate success in demo mode (when server isn't reachable)
+    const liveUrl = `${baseUrl}${route}`;
+    document.getElementById('fn-live-url').textContent = liveUrl + ' (demo — connect your cloud to test live)';
+    document.getElementById('fn-curl-cmd').innerHTML =
+      `<span class="hlt">curl</span> ${liveUrl}`;
+    document.getElementById('fn-result').classList.add('visible');
+    toast('Demo mode — configs saved, connect your cloud to deploy live', 'in');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '⚡ Deploy Function <span class="arrow">→</span>';
+  }
+}
+
+function copyFnUrl() {
+  const url = document.getElementById('fn-live-url').textContent.split(' ')[0];
+  navigator.clipboard.writeText(url).then(() => toast('URL copied!', 'ok'));
+}
+
+function finishSetup() {
+  toast('Setup complete! Your sovereign cloud is running.', 'ok');
+  // Mark all steps done
+  for (let i = 1; i <= 5; i++) {
+    const p = document.getElementById('pill-' + i);
+    if (p) { p.classList.remove('active'); p.classList.add('done'); }
+  }
+}
+
+// ── Toast ──────────────────────────────────────────────────
+function toast(msg, type = 'in') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── Init ───────────────────────────────────────────────────
+// Pre-select Docker as default
+document.querySelector('[data-id="docker"]').click();
+</script>
+</body>
+</html>

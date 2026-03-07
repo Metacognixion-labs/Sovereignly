@@ -1,0 +1,29 @@
+# Sovereignly v3 — Prometheus Configuration
+
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: sovereign-cloud
+    version: 3.0.1
+
+scrape_configs:
+  # ── SovereignCloud nodes ────────────────────────────────────────────────────
+  - job_name: sovereign-cloud
+    static_configs:
+      - targets:
+          - sovereign:8787
+          - sovereign-replica:8787
+        labels:
+          service: sovereign-cloud
+    metrics_path: /_sovereign/metrics
+    scrape_timeout: 10s
+    params:
+      format: [prometheus]
+
+  # ── Caddy ───────────────────────────────────────────────────────────────────
+  - job_name: caddy
+    static_configs:
+      - targets: [caddy:2019]
+    metrics_path: /metrics
+    scrape_timeout: 5s

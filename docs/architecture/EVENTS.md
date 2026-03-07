@@ -1,0 +1,13 @@
+# Sovereignly Event System
+
+Core events:
+
+TENANT_CREATED
+TENANT_DELETED
+WORKFLOW_STARTED
+WORKFLOW_COMPLETED
+AGENT_EXECUTED
+MACHINE_STARTED
+MACHINE_FAILED
+
+Events are immutable and logged for auditability.

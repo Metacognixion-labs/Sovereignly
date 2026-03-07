@@ -1,0 +1,20 @@
+{
+  "name": "sovereignly",
+  "version": "3.0.1",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "bun run --cwd apps/oss src/server.ts",
+    "dev:cloud": "bun run --cwd apps/cloud src/server.ts",
+    "start": "bun run --cwd apps/oss src/server.ts",
+    "start:cloud": "bun run --cwd apps/cloud src/server.ts",
+    "test": "bun test apps/oss/src/test/integration.test.ts",
+    "test:cloud": "bun test apps/cloud/src/test/",
+    "typecheck": "bunx tsc --noEmit",
+    "lint": "bunx biome check ."
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}

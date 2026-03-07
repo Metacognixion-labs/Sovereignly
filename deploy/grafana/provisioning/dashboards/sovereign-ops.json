@@ -1,0 +1,112 @@
+{
+  "title": "Sovereignly v3.0.1 — Operations",
+  "uid": "sovereign-ops",
+  "version": 2,
+  "schemaVersion": 38,
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "tags": ["sovereign", "metacognixion", "production"],
+  "annotations": { "list": [] },
+  "templating": { "list": [] },
+
+  "panels": [
+    {
+      "id": 1, "title": "Chain Blocks", "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } } },
+      "targets": [{ "expr": "sovereign_chain_blocks_total", "legendFormat": "Blocks" }]
+    },
+    {
+      "id": 2, "title": "Audit Events", "type": "stat",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "#c8a84b", "mode": "fixed" } } },
+      "targets": [{ "expr": "sovereign_chain_events_total", "legendFormat": "Events" }]
+    },
+    {
+      "id": 3, "title": "EAS Anchors", "type": "stat",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "#00d4ff", "mode": "fixed" } } },
+      "targets": [{ "expr": "sovereign_anchor_eas_total{chain=\"eas-base\"}", "legendFormat": "EAS" }]
+    },
+    {
+      "id": 4, "title": "Critical Events", "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] } } },
+      "targets": [{ "expr": "sovereign_chain_critical_events_total", "legendFormat": "Critical" }]
+    },
+    {
+      "id": 5, "title": "HTTP Requests/sec", "type": "stat",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "fixedColor": "#00ffaa", "mode": "fixed" } } },
+      "targets": [{ "expr": "sovereign_http_rps", "legendFormat": "RPS" }]
+    },
+    {
+      "id": 6, "title": "Uptime", "type": "stat",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "fixedColor": "#a855f7", "mode": "fixed" } } },
+      "targets": [{ "expr": "sovereign_uptime_seconds", "legendFormat": "Uptime" }]
+    },
+
+    {
+      "id": 10, "title": "Events / min", "type": "timeseries",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 15, "gradientMode": "scheme" } } },
+      "targets": [
+        { "expr": "rate(sovereign_chain_events_total[1m]) * 60", "legendFormat": "Events/min" }
+      ]
+    },
+    {
+      "id": 11, "title": "Blocks Sealed / min", "type": "timeseries",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 15 } } },
+      "targets": [
+        { "expr": "rate(sovereign_chain_blocks_total[5m]) * 60", "legendFormat": "Blocks/min" }
+      ]
+    },
+
+    {
+      "id": 20, "title": "HTTP Requests", "type": "timeseries",
+      "gridPos": { "x": 0, "y": 12, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } } },
+      "targets": [
+        { "expr": "rate(sovereign_http_requests_total[1m]) * 60", "legendFormat": "Requests/min" },
+        { "expr": "rate(sovereign_http_errors_total[1m]) * 60", "legendFormat": "Errors/min" }
+      ]
+    },
+    {
+      "id": 21, "title": "Serverless Functions", "type": "stat",
+      "gridPos": { "x": 8, "y": 12, "w": 4, "h": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "#00d4ff", "mode": "fixed" } } },
+      "targets": [{ "expr": "sovereign_functions_registered", "legendFormat": "Functions" }]
+    },
+    {
+      "id": 22, "title": "KV Keys", "type": "stat",
+      "gridPos": { "x": 12, "y": 12, "w": 4, "h": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "#ffcc00", "mode": "fixed" } } },
+      "targets": [{ "expr": "sovereign_kv_keys", "legendFormat": "Keys" }]
+    },
+    {
+      "id": 23, "title": "EAS Anchor Rate", "type": "timeseries",
+      "gridPos": { "x": 16, "y": 12, "w": 8, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 15 } } },
+      "targets": [
+        { "expr": "sovereign_anchor_eas_total{chain=\"eas-base\"}", "legendFormat": "Base" },
+        { "expr": "sovereign_anchor_eas_total{chain=\"solana\"}", "legendFormat": "Solana" }
+      ]
+    },
+
+    {
+      "id": 30, "title": "Error Rate %", "type": "gauge",
+      "gridPos": { "x": 8, "y": 16, "w": 4, "h": 4 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] } } },
+      "targets": [{ "expr": "sovereign_http_errors_total / sovereign_http_requests_total * 100", "legendFormat": "Error %" }]
+    },
+    {
+      "id": 31, "title": "System Info", "type": "table",
+      "gridPos": { "x": 12, "y": 16, "w": 4, "h": 4 },
+      "fieldConfig": { "defaults": {} },
+      "targets": [{ "expr": "sovereign_uptime_seconds", "legendFormat": "{{node}}", "format": "table", "instant": true }],
+      "options": { "showHeader": true }
+    }
+  ]
+}

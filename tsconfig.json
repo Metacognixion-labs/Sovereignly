@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["bun-types"],
+    "paths": {
+      "@sovereignly/core": ["./packages/core/src"],
+      "@sovereignly/core/*": ["./packages/core/src/*"],
+      "@sovereignly/oss/*": ["./apps/oss/src/*"]
+    }
+  },
+  "include": ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts"]
+}

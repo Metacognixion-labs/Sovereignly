@@ -1,0 +1,37 @@
+{
+  "name": "@metacognixion/chain-sdk",
+  "version": "3.0.1",
+  "description": "Embed cryptographically-verifiable SOC2/ISO27001 compliance into any application. Omnichain-attested audit trails via EAS/Base, Arbitrum, Solana, Irys, and Bitcoin.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "bun build ./index.ts --outdir dist --target node --format esm && bun x tsc --emitDeclarationOnly --outDir dist",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "soc2", "compliance", "audit", "blockchain", "sovereignty",
+    "eas", "attestation", "omnichain", "merkle", "iso27001",
+    "gdpr", "hipaa", "nist"
+  ],
+  "author": "MetaCognixion <jp@metacognixion.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Metacognixion-labs/Sovereignly",
+    "directory": "packages/chain-sdk"
+  },
+  "homepage": "https://sovereignly.io",
+  "bugs": "https://github.com/Metacognixion-labs/Sovereignly/issues",
+  "engines": { "node": ">=18" },
+  "dependencies": {},
+  "peerDependencies": {}
+}
