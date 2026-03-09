@@ -187,6 +187,16 @@ pointer-events:none;z-index:0}
 .compare .win{color:var(--green);font-weight:700}
 .compare .ours{color:var(--cyan);font-weight:700}
 
+/* ── Token States ── */
+.token-state{flex:1;padding:14px 16px;background:var(--panel);border:1px solid var(--border);border-radius:8px;
+  cursor:pointer;text-align:center;transition:all .15s}
+.token-state:hover{border-color:var(--border2);background:var(--cyan2)}
+.token-state.active{border-color:var(--cyan);background:var(--cyan2);box-shadow:0 0 12px rgba(0,212,255,.08)}
+.token-state.active div:first-child{color:var(--cyan)}
+.gate-pill{padding:4px 10px;border-radius:4px;font-family:var(--mono);font-size:10px;text-align:center}
+.gate-pill.on{background:var(--green2);color:var(--green);border:1px solid rgba(0,255,170,.15)}
+.gate-pill.off{background:rgba(255,59,85,.05);color:var(--muted);border:1px solid var(--border)}
+
 @media(max-width:768px){
   .app{grid-template-columns:1fr}
   .sidebar{display:none}
@@ -220,6 +230,8 @@ pointer-events:none;z-index:0}
   <div class="nav-sec">Observability</div>
   <div class="nav-item" onclick="show('logs',this)"><span class="nav-icon">≡</span> Logs <span class="nav-badge r" id="err-badge">0</span></div>
   <div class="nav-item" onclick="show('perf',this)"><span class="nav-icon">▲</span> Performance</div>
+  <div class="nav-sec">Tokens</div>
+  <div class="nav-item" onclick="show('tokens',this)"><span class="nav-icon">◆</span> Token System <span class="nav-badge" id="token-status-badge">CLOSED</span></div>
   <div class="nav-sec">Cloud</div>
   <div class="nav-item" onclick="show('deploy',this)"><span class="nav-icon">⚙</span> Deploy Targets</div>
   <div class="nav-item" onclick="show('settings',this)"><span class="nav-icon">⚙</span> Settings</div>
@@ -352,6 +364,78 @@ pointer-events:none;z-index:0}
       <div class="mbar"><div class="mbar-lbl">Error Rate</div><div class="mbar-track"><div class="mbar-fill" id="b-err" style="width:0;background:var(--red);box-shadow:0 0 6px var(--red)"></div></div><div class="mbar-val" id="v-err">0%</div></div>
       <div class="mbar"><div class="mbar-lbl">Workers Busy</div><div class="mbar-track"><div class="mbar-fill" id="b-wk" style="width:0;background:var(--amber);box-shadow:0 0 6px var(--amber)"></div></div><div class="mbar-val" id="v-wk">0</div></div>
       <div class="mbar"><div class="mbar-lbl">Cache Size</div><div class="mbar-track"><div class="mbar-fill" id="b-cache" style="width:0;background:var(--violet);box-shadow:0 0 6px var(--violet)"></div></div><div class="mbar-val" id="v-cache">0</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- TOKEN SYSTEM -->
+<div class="view" id="view-tokens">
+  <div class="ph">
+    <div><div class="ph-title">TOKEN SYSTEM</div><div class="ph-sub">SVRN token visibility & management</div></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" onclick="loadTokens()">↻ Refresh</button>
+      <button class="btn btn-danger" id="freeze-btn" onclick="toggleFreeze()">Freeze</button>
+    </div>
+  </div>
+
+  <!-- Status Control -->
+  <div class="panel">
+    <div class="panel-hd"><div class="panel-title">System Status & Visibility</div></div>
+    <div class="panel-body">
+      <div style="display:flex;gap:16px;align-items:center;margin-bottom:20px">
+        <div style="display:flex;gap:8px;flex:1">
+          <div id="status-closed" class="token-state active" onclick="setTokenStatus('CLOSED')">
+            <div style="font-family:var(--mono);font-size:12px;font-weight:700">CLOSED</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Internal only</div>
+          </div>
+          <div style="color:var(--muted);display:flex;align-items:center;font-size:16px">→</div>
+          <div id="status-pre-public" class="token-state" onclick="setTokenStatus('PRE_PUBLIC')">
+            <div style="font-family:var(--mono);font-size:12px;font-weight:700">PRE_PUBLIC</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Limited access</div>
+          </div>
+          <div style="color:var(--muted);display:flex;align-items:center;font-size:16px">→</div>
+          <div id="status-public" class="token-state" onclick="setTokenStatus('PUBLIC')">
+            <div style="font-family:var(--mono);font-size:12px;font-weight:700">PUBLIC</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Full access</div>
+          </div>
+        </div>
+        <div id="frozen-indicator" style="display:none;padding:6px 14px;background:var(--red2);border:1px solid var(--red);border-radius:6px;font-family:var(--mono);font-size:11px;color:var(--red);font-weight:700">FROZEN</div>
+      </div>
+
+      <!-- Feature Gates -->
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Feature Gates</div>
+      <div id="feature-gates" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px"></div>
+    </div>
+  </div>
+
+  <!-- Supply Stats -->
+  <div class="stat-grid">
+    <div class="stat"><div class="stat-label">Circulating</div><div class="stat-val" id="t-circulating">—</div><div class="stat-unit">SVRN</div></div>
+    <div class="stat g"><div class="stat-label">Staked</div><div class="stat-val" id="t-staked">—</div><div class="stat-unit">SVRN</div></div>
+    <div class="stat a"><div class="stat-label">Treasury</div><div class="stat-val" id="t-treasury">—</div><div class="stat-unit">SVRN</div></div>
+    <div class="stat v"><div class="stat-label">Fee Pool</div><div class="stat-val" id="t-fees">—</div><div class="stat-unit">SVRN</div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <!-- Award Tokens -->
+    <div class="panel">
+      <div class="panel-hd"><div class="panel-title">Award Tokens</div></div>
+      <div class="panel-body">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="fg"><label class="flabel">User ID</label><input class="finput" id="award-user" placeholder="user_abc123"></div>
+          <div class="fg"><label class="flabel">Amount</label><input class="finput" id="award-amount" type="number" placeholder="100"></div>
+          <div class="fg"><label class="flabel">Memo</label><input class="finput" id="award-memo" placeholder="Reward for..."></div>
+          <button class="btn btn-primary" onclick="awardTokens()">Award Tokens</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Configuration -->
+    <div class="panel">
+      <div class="panel-hd"><div class="panel-title">Configuration</div></div>
+      <div class="panel-body">
+        <div id="token-config-display" style="font-family:var(--mono);font-size:11px;line-height:2.2;color:var(--muted)">Loading...</div>
+      </div>
     </div>
   </div>
 </div>
@@ -513,6 +597,7 @@ function show(name, el) {
   if (name === 'functions') loadFns();
   if (name === 'perf') updatePerf();
   if (name === 'kv') loadKV();
+  if (name === 'tokens') loadTokens();
 }
 
 // ── Metrics ────────────────────────────────────────────────
@@ -710,6 +795,126 @@ addLog('info', '[Runtime] Bun + Hono gateway');
 addLog('info', '[KV] SQLite (bun:sqlite) ready');
 addLog('info', '[Storage] Object store ready');
 addLog('info', '[Workers] Pool pre-warmed');
+
+// ── Token System ──────────────────────────────────────────────
+let tokenConfig = null;
+let tokenGates = null;
+
+async function loadTokens() {
+  const { ok, data } = await api('/_sovereign/tokens/config');
+  if (!ok || !data) return;
+
+  tokenConfig = data.config;
+  tokenGates = data.gates;
+
+  // Update status buttons
+  ['CLOSED', 'PRE_PUBLIC', 'PUBLIC'].forEach(s => {
+    const el = document.getElementById('status-' + s.toLowerCase().replace('_', '-'));
+    if (el) el.classList.toggle('active', tokenConfig.status === s);
+  });
+
+  // Update badge
+  const badge = document.getElementById('token-status-badge');
+  if (badge) {
+    badge.textContent = tokenConfig.status;
+    badge.className = 'nav-badge' + (tokenConfig.status === 'PUBLIC' ? ' g' : tokenConfig.status === 'PRE_PUBLIC' ? '' : '');
+  }
+
+  // Frozen indicator
+  const frozenEl = document.getElementById('frozen-indicator');
+  if (frozenEl) frozenEl.style.display = tokenConfig.isFrozen ? 'block' : 'none';
+  const freezeBtn = document.getElementById('freeze-btn');
+  if (freezeBtn) {
+    freezeBtn.textContent = tokenConfig.isFrozen ? 'Unfreeze' : 'Freeze';
+    freezeBtn.className = tokenConfig.isFrozen ? 'btn btn-primary' : 'btn btn-danger';
+  }
+
+  // Feature gates
+  const gatesEl = document.getElementById('feature-gates');
+  if (gatesEl && tokenGates) {
+    gatesEl.innerHTML = Object.entries(tokenGates).map(([k, v]) =>
+      `<div class="gate-pill ${v ? 'on' : 'off'}">${k.replace('can', '')} ${v ? '✓' : '✗'}</div>`
+    ).join('');
+  }
+
+  // Config display
+  const cfgEl = document.getElementById('token-config-display');
+  if (cfgEl) {
+    cfgEl.innerHTML = [
+      ['Token', `${tokenConfig.tokenName} (${tokenConfig.tokenSymbol})`],
+      ['Transfer Fee', `${tokenConfig.transferFeePercent}%`],
+      ['Withdrawal Fee', `${tokenConfig.withdrawalFeePercent}%`],
+      ['Daily Limit', `${tokenConfig.dailyWithdrawLimit} ${tokenConfig.tokenSymbol}`],
+      ['Weekly Limit', `${tokenConfig.weeklyWithdrawLimit} ${tokenConfig.tokenSymbol}`],
+      ['Staking APY', `${tokenConfig.baseStakingApy}%`],
+      ['Min Stake Days', tokenConfig.minStakeDays],
+      ['Points Rate', `${tokenConfig.pointsToTokenRate}:1`],
+    ].map(([k,v]) => `<div><span style="color:var(--cyan)">${k}:</span> ${v}</div>`).join('');
+  }
+
+  // Supply stats
+  const { data: supply } = await api('/_sovereign/tokens/supply');
+  if (supply) {
+    document.getElementById('t-circulating').textContent = fmt(supply.circulating || 0);
+    document.getElementById('t-staked').textContent = fmt(supply.staked || 0);
+    document.getElementById('t-treasury').textContent = fmt(supply.inTreasury || 0);
+    document.getElementById('t-fees').textContent = fmt(supply.inFeePool || 0);
+  }
+}
+
+async function setTokenStatus(status) {
+  if (!confirm(`Transition token system to ${status}?`)) return;
+  const { ok, data } = await api('/_sovereign/tokens/status', {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+  if (ok) {
+    toast(`Token system → ${status}`, 'ok');
+    addLog('info', `[Tokens] Status changed to ${status}`);
+    loadTokens();
+  } else {
+    toast(data?.error || 'Failed to change status', 'er');
+  }
+}
+
+async function toggleFreeze() {
+  const isFrozen = tokenConfig?.isFrozen;
+  const endpoint = isFrozen ? '/_sovereign/tokens/unfreeze' : '/_sovereign/tokens/freeze';
+  const reason = isFrozen ? 'Admin unfreeze' : prompt('Freeze reason:', 'Emergency');
+  if (!reason) return;
+
+  const { ok } = await api(endpoint, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+  if (ok) {
+    toast(isFrozen ? 'Token system unfrozen' : 'Token system FROZEN', isFrozen ? 'ok' : 'er');
+    addLog(isFrozen ? 'info' : 'error', `[Tokens] System ${isFrozen ? 'unfrozen' : 'FROZEN'}: ${reason}`);
+    loadTokens();
+  }
+}
+
+async function awardTokens() {
+  const userId = document.getElementById('award-user').value.trim();
+  const amount = parseFloat(document.getElementById('award-amount').value);
+  const memo = document.getElementById('award-memo').value.trim() || 'Admin award';
+  if (!userId || !amount || amount <= 0) { toast('User ID and positive amount required', 'er'); return; }
+
+  const { ok, data } = await api('/_sovereign/tokens/award', {
+    method: 'POST',
+    body: JSON.stringify({ userId, amount, memo }),
+  });
+  if (ok) {
+    toast(`Awarded ${amount} SVRN to ${userId}`, 'ok');
+    addLog('info', `[Tokens] Awarded ${amount} SVRN to ${userId}: ${memo}`);
+    document.getElementById('award-user').value = '';
+    document.getElementById('award-amount').value = '';
+    document.getElementById('award-memo').value = '';
+    loadTokens();
+  } else {
+    toast(data?.error || 'Award failed', 'er');
+  }
+}
 
 refresh();
 setInterval(refresh, 8000);

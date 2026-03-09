@@ -39,6 +39,14 @@ import { createEcosystem }     from "./bootstrap/ecosystem.ts";
 import { createCluster }       from "./bootstrap/cluster.ts";
 import { createPlatformGateway } from "./bootstrap/gateway.ts";
 
+// Token system (PREMIUM)
+import { TokenManager }        from "./tokens/manager.ts";
+import { registerTokenRoutes } from "./tokens/routes.ts";
+
+// Origin Quantum Cloud integration (PREMIUM)
+import { OriginQuantumCloud }  from "./quantum/origin-cloud.ts";
+import { registerQuantumRoutes } from "./quantum/routes.ts";
+
 //  Banner
 
 console.log(`
@@ -51,6 +59,7 @@ console.log(`
   Chain:    SovereignChain PoA (per-tenant isolated)
   Anchor:   ${process.env.EAS_BASE_RPC ? "EAS/Base " : "config EAS_BASE_RPC"}
   Billing:  ${config.stripeKey ? "Stripe " : "disabled"}
+  Tokens:   SVRN (internal → public via dashboard)
   Cluster:  ${config.controlPlaneUrl ? `-> ${config.controlPlaneUrl}` : "self (control plane)"}
   License:  Business Source License 1.1
 `);
@@ -92,7 +101,42 @@ const cluster = createCluster(
   kernel.sovereignKernel, kernel.placementEngine, kernel.stateRegistry,
 );
 
-// 8. Gateway + all routes
+// 8. Token system (PREMIUM)
+const tokenManager = new TokenManager({ dataDir: `${config.dataDir}/platform`, chain });
+console.log(`  Tokens:   ${tokenManager.getStatus()} mode (${tokenManager.getConfig().tokenSymbol})`);
+
+// 9. Quantum Cloud integration (PREMIUM)
+const quantumCloud = OriginQuantumCloud.fromEnv();
+if (process.env.QUANTUM_API_TOKEN) {
+  quantumCloud.start().catch(err =>
+    console.warn(`[QuantumCloud] Start failed (non-fatal): ${err.message}`)
+  );
+  console.log(`  Quantum:  Origin Cloud (${process.env.QUANTUM_CHIP_ID ?? "Simulation"}) → QRNG + Attestation`);
+} else {
+  console.log(`  Quantum:  disabled (set QUANTUM_API_TOKEN to enable)`);
+}
+
+// Quantum attestation on anchor blocks (if enabled)
+chain.onBlock(async (block) => {
+  if (process.env.QUANTUM_API_TOKEN && block.index > 0 && block.index % config.anchorInterval === 0) {
+    try {
+      const result = await quantumCloud.attestMerkleRoot(
+        block.merkleRoot, block.index, block.eventCount, "platform"
+      );
+      await chain.emit("CONFIG_CHANGE", {
+        event: "quantum_attestation",
+        blockIdx: block.index,
+        fingerprint: result.quantumFingerprint,
+        chip: result.chip,
+        qubits: result.qubits,
+      }, "LOW");
+    } catch (e: any) {
+      console.warn(`[QuantumCloud] Attestation failed (non-fatal): ${e.message}`);
+    }
+  }
+});
+
+// 10. Gateway + all routes
 const { app, metrics } = createPlatformGateway(config, {
   chain, runtime, kv, storage,
   passkeys, oauthBroker,
@@ -101,6 +145,10 @@ const { app, metrics } = createPlatformGateway(config, {
   ...ecosystem,
   ...cluster,
 });
+
+// Register token + quantum routes
+registerTokenRoutes(app, tokenManager, { jwtSecret: config.jwtSecret, adminToken: config.adminToken });
+registerQuantumRoutes(app, quantumCloud, { adminToken: config.adminToken });
 
 //  Start
 
@@ -114,6 +162,7 @@ await chain.emit("NODE_JOIN", {
     passkeys: true, oauth: oauthBroker.getSupportedProviders(), omnichain: true,
     billing: !!billing, tenants: true, webhooks: true,
     cluster: true, globalAnchor: true, aiOrchestration: true,
+    tokens: true, quantum: !!process.env.QUANTUM_API_TOKEN,
   },
 }, "LOW");
 
@@ -121,6 +170,8 @@ console.log(`[Sovereignly Cloud]  Ready  ${config.appUrl}
   Dashboard:  ${config.appUrl}/_sovereign/dashboard
   Signup:     ${config.appUrl}/_sovereign/signup
   Ops:        ${config.appUrl}/_sovereign/ops
+  Tokens:     ${config.appUrl}/_sovereign/tokens/status
+  Quantum:    ${config.appUrl}/_sovereign/quantum/health
   Cluster:    ${config.appUrl}/v1/cluster/stats
   Kernel:     ${config.appUrl}/v1/kernel/stats
 `);
@@ -141,7 +192,8 @@ async function shutdown() {
   cluster.clusterBalancer.close(); cluster.networkAnomalyDetector.close(); cluster.costOptimizer.close();
   // Core components
   server.stop(true); scheduler.stop(); runtime.shutdown();
-  webhookManager.close(); kernel.workflowEngine.close(); kernel.agentRuntime.close();
+  webhookManager.close(); tokenManager.close(); quantumCloud.close();
+  kernel.workflowEngine.close(); kernel.agentRuntime.close();
   kernel.healthAnalyzer.close(); kernel.decisionEngine.close(); kernel.stateRegistry.close();
   kernel.cognitiveModel.close(); ecosystem.gamification.close();
   await tenantManager.closeAll();
@@ -151,7 +203,7 @@ async function shutdown() {
 
 export {
   app, chain, kv, storage, runtime, scheduler, metrics,
-  tenantManager, billing,
+  tenantManager, billing, tokenManager, quantumCloud,
 };
 export const sovereignKernel = kernel.sovereignKernel;
 export const nodeRegistry = cluster.nodeRegistry;
