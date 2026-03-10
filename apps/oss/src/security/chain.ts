@@ -170,6 +170,13 @@ export class SovereignChain {
     this.db.run("CREATE INDEX IF NOT EXISTS idx_events_type ON events(type)");
     this.db.run("CREATE INDEX IF NOT EXISTS idx_events_ts   ON events(ts)");
     this.db.run("CREATE INDEX IF NOT EXISTS idx_events_sev  ON events(severity)");
+
+    // Migration: add merkle_root_pq column to existing databases
+    try {
+      this.db.run("ALTER TABLE blocks ADD COLUMN merkle_root_pq TEXT DEFAULT ''");
+    } catch {
+      // Column already exists — ignore
+    }
   }
 
   //  Initialise (async key generation) 
