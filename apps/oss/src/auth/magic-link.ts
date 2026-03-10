@@ -63,6 +63,9 @@ export class MagicLinkService {
       )
     `);
     this.db.run("CREATE INDEX IF NOT EXISTS idx_magic_email ON magic_codes(email)");
+
+    // Migration: add token column if upgrading from v1 schema
+    try { this.db.run("ALTER TABLE magic_codes ADD COLUMN token TEXT NOT NULL DEFAULT ''"); } catch {}
     this.db.run("CREATE INDEX IF NOT EXISTS idx_magic_token ON magic_codes(token)");
 
     setInterval(() => this.cleanup(), 5 * 60 * 1000);
