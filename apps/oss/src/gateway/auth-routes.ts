@@ -405,21 +405,21 @@ export function registerAuthRoutes(
     return c.html(`<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sovereignly  Sign In</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
 window.__SOVEREIGN_API__='';window.__PASSKEYS_RPID__='${escapeHtml(rpId)}';
 window.__APP_URL__='${escapeHtml(cfg.appUrl)}';
 window.__OAUTH_PROVIDERS__=${JSON.stringify(providers)};
 </script></head>
-<body style="margin:0;background:#000;color:#e8ecf4;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh">
-<div style="text-align:center">
-  <div style="font-size:40px;margin-bottom:8px"></div>
-  <div style="font-size:13px;font-weight:700;letter-spacing:.1em;margin-bottom:4px">SOVEREIGNLY</div>
-  <div style="font-size:10px;color:#4a5f78;font-family:monospace;margin-bottom:24px">sovereign auth  no external providers</div>
+<body style="margin:0;background:#050a10;color:#f0f2f5;font-family:'Space Grotesk',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;-webkit-font-smoothing:antialiased">
+<div style="text-align:center;background:#111b2a;border:1px solid #1e293b;border-radius:12px;padding:40px;max-width:440px;width:100%;margin:20px">
+  <div style="font-size:13px;font-weight:700;letter-spacing:.1em;margin-bottom:4px;color:#0df23b">SOVEREIGNLY</div>
+  <div style="font-size:12px;color:#475569;font-family:'JetBrains Mono',monospace;margin-bottom:28px">sovereign auth portal</div>
   <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-    ${providers.map(p=>`<a href="/_sovereign/auth/oauth/${p}/start" style="padding:7px 14px;background:#101215;border:1px solid #1e2330;border-radius:6px;color:#e8ecf4;text-decoration:none;font-size:11px;font-family:monospace">${p}</a>`).join("")}
+    ${providers.map(p=>`<a href="/_sovereign/auth/oauth/${p}/start" style="padding:9px 18px;background:#162236;border:1px solid #1e293b;border-radius:8px;color:#f0f2f5;text-decoration:none;font-size:13px;font-family:'Space Grotesk',sans-serif;font-weight:500;transition:border-color .2s" onmouseover="this.style.borderColor='#0df23b'" onmouseout="this.style.borderColor='#1e293b'">${p}</a>`).join("")}
   </div>
-  <div style="margin-top:16px;font-size:10px;color:#2a3648;font-family:monospace">
-    or use WebAuthn passkeys at /_sovereign/auth/passkeys/login/begin
+  <div style="margin-top:20px;font-size:11px;color:#475569;font-family:'JetBrains Mono',monospace">
+    or use WebAuthn passkeys
   </div>
 </div>
 </body></html>`);

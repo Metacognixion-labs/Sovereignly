@@ -91,41 +91,40 @@ else{location.replace('/_sovereign/signin?next=dashboard');}
 <title>Sign In — Sovereignly</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root{--bg-void:#080f1e;--bg-card:#101d35;--bg-raised:#14233f;--bg-border:#1c334f;
---blue:#2B7FFF;--blue-bright:#4f97ff;--green:#5DB84A;
---t-primary:#f0f2f5;--t-secondary:#8fa3bf;--t-muted:#556b8a;
---f-display:'Syne',sans-serif;--f-body:'DM Sans',sans-serif;--f-mono:'JetBrains Mono',monospace;
+:root{--bg:#050a10;--surface:#0d151f;--card:#111b2a;--raised:#162236;--border:#1e293b;
+--brand:#0df23b;--brand-bright:#3dff62;--quantum:#a78bfa;
+--t-primary:#f0f2f5;--t-secondary:#94a3b8;--t-muted:#475569;
+--font:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
 --radius:8px;--radius-lg:12px}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg-void);color:var(--t-primary);font-family:var(--f-body);
+body{background:var(--bg);color:var(--t-primary);font-family:var(--font);
 min-height:100vh;display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased}
-.card{background:var(--bg-card);border:1px solid var(--bg-border);border-radius:var(--radius-lg);
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);
 padding:40px;width:100%;max-width:440px;margin:20px}
-.back{display:inline-block;margin-bottom:20px;color:var(--t-muted);text-decoration:none;font-size:14px}
+.back{display:inline-block;margin-bottom:20px;color:var(--t-muted);text-decoration:none;font-size:14px;transition:color .2s}
 .back:hover{color:var(--t-secondary)}
-h1{font-family:var(--f-display);font-size:24px;font-weight:700;margin-bottom:6px}
+h1{font-size:24px;font-weight:700;margin-bottom:6px;letter-spacing:-.02em}
 .sub{color:var(--t-secondary);font-size:14px;margin-bottom:28px}
 label{display:block;font-size:13px;font-weight:500;color:var(--t-secondary);margin-bottom:6px}
-input{width:100%;padding:12px 14px;background:var(--bg-raised);border:1px solid var(--bg-border);
-border-radius:var(--radius);color:var(--t-primary);font-family:var(--f-body);font-size:15px;
+input{width:100%;padding:12px 14px;background:var(--raised);border:1px solid var(--border);
+border-radius:var(--radius);color:var(--t-primary);font-family:var(--font);font-size:15px;
 outline:none;transition:border-color .2s;margin-bottom:18px}
-input:focus{border-color:var(--blue)}
+input:focus{border-color:var(--brand)}
 input::placeholder{color:var(--t-muted)}
-button{width:100%;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);
-font-family:var(--f-display);font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
-button:hover{background:var(--blue-bright)}
+button{width:100%;padding:14px;background:var(--brand);color:#050a10;border:none;border-radius:var(--radius);
+font-family:var(--font);font-size:15px;font-weight:600;cursor:pointer;transition:all .2s}
+button:hover{background:var(--brand-bright);box-shadow:0 0 24px rgba(13,242,59,.2)}
 button:disabled{opacity:.6;cursor:not-allowed}
-.msg{margin-top:16px;padding:14px;border-radius:var(--radius);font-size:14px;font-family:var(--f-mono);
+.msg{margin-top:16px;padding:14px;border-radius:var(--radius);font-size:14px;font-family:var(--mono);
 line-height:1.6;display:none}
 .msg.err{display:block;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ff6b6b}
-.link{color:var(--blue);text-decoration:none;font-size:14px}
+.link{color:var(--brand);text-decoration:none;font-size:14px}
 .link:hover{text-decoration:underline}
 .footer{margin-top:20px;text-align:center;color:var(--t-muted);font-size:13px}
 </style>
 <script>
-// If already signed in, skip to dashboard
 var t=localStorage.getItem('sovereign_token');
 if(t)location.replace('/_sovereign/dashboard');
 </script>
@@ -203,42 +202,39 @@ f.addEventListener('submit',async e=>{
 <title>Sign Up — Sovereignly</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root{--bg-void:#080f1e;--bg-card:#101d35;--bg-raised:#14233f;--bg-border:#1c334f;
---blue:#2B7FFF;--blue-bright:#4f97ff;--blue-dark:#1660d8;--green:#5DB84A;
---t-primary:#f0f2f5;--t-secondary:#8fa3bf;--t-muted:#556b8a;
---f-display:'Syne',sans-serif;--f-body:'DM Sans',sans-serif;--f-mono:'JetBrains Mono',monospace;
+:root{--bg:#050a10;--surface:#0d151f;--card:#111b2a;--raised:#162236;--border:#1e293b;
+--brand:#0df23b;--brand-bright:#3dff62;--quantum:#a78bfa;
+--t-primary:#f0f2f5;--t-secondary:#94a3b8;--t-muted:#475569;
+--font:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
 --radius:8px;--radius-lg:12px}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg-void);color:var(--t-primary);font-family:var(--f-body);
-min-height:100vh;display:flex;align-items:center;justify-content:center;
--webkit-font-smoothing:antialiased}
-.card{background:var(--bg-card);border:1px solid var(--bg-border);border-radius:var(--radius-lg);
+body{background:var(--bg);color:var(--t-primary);font-family:var(--font);
+min-height:100vh;display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);
 padding:40px;width:100%;max-width:440px;margin:20px}
-.back{display:inline-block;margin-bottom:20px;color:var(--t-muted);text-decoration:none;font-size:14px}
+.back{display:inline-block;margin-bottom:20px;color:var(--t-muted);text-decoration:none;font-size:14px;transition:color .2s}
 .back:hover{color:var(--t-secondary)}
-h1{font-family:var(--f-display);font-size:24px;font-weight:700;margin-bottom:6px}
+h1{font-size:24px;font-weight:700;margin-bottom:6px;letter-spacing:-.02em}
 .sub{color:var(--t-secondary);font-size:14px;margin-bottom:28px}
 label{display:block;font-size:13px;font-weight:500;color:var(--t-secondary);margin-bottom:6px}
-input{width:100%;padding:12px 14px;background:var(--bg-raised);border:1px solid var(--bg-border);
-border-radius:var(--radius);color:var(--t-primary);font-family:var(--f-body);font-size:15px;
+input{width:100%;padding:12px 14px;background:var(--raised);border:1px solid var(--border);
+border-radius:var(--radius);color:var(--t-primary);font-family:var(--font);font-size:15px;
 outline:none;transition:border-color .2s;margin-bottom:18px}
-input:focus{border-color:var(--blue)}
+input:focus{border-color:var(--brand)}
 input::placeholder{color:var(--t-muted)}
-button{width:100%;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);
-font-family:var(--f-display);font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
-button:hover{background:var(--blue-bright)}
+button{width:100%;padding:14px;background:var(--brand);color:#050a10;border:none;border-radius:var(--radius);
+font-family:var(--font);font-size:15px;font-weight:600;cursor:pointer;transition:all .2s}
+button:hover{background:var(--brand-bright);box-shadow:0 0 24px rgba(13,242,59,.2)}
 button:disabled{opacity:.6;cursor:not-allowed}
-.msg{margin-top:16px;padding:14px;border-radius:var(--radius);font-size:14px;font-family:var(--f-mono);
+.msg{margin-top:16px;padding:14px;border-radius:var(--radius);font-size:14px;font-family:var(--mono);
 line-height:1.6;display:none}
-.msg.ok{display:block;background:rgba(93,184,74,.1);border:1px solid rgba(93,184,74,.25);color:var(--green)}
+.msg.ok{display:block;background:rgba(13,242,59,.08);border:1px solid rgba(13,242,59,.2);color:var(--brand)}
 .msg.err{display:block;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ff6b6b}
-.success-actions{margin-top:16px;display:flex;gap:10px}
-.success-actions a{display:inline-block;padding:10px 18px;border-radius:var(--radius);font-size:13px;
-font-weight:600;text-decoration:none;font-family:var(--f-display)}
-.btn-dash{background:var(--blue);color:#fff}
-.btn-dash:hover{background:var(--blue-bright)}
+.link{color:var(--brand);text-decoration:none;font-size:14px}
+.link:hover{text-decoration:underline}
+.footer{margin-top:20px;text-align:center;color:var(--t-muted);font-size:13px}
 </style>
 </head>
 <body>
@@ -254,10 +250,9 @@ font-weight:600;text-decoration:none;font-family:var(--f-display)}
     <button type="submit" id="btn">Create Account</button>
   </form>
   <div id="msg" class="msg"></div>
-  <div class="footer" style="margin-top:20px;text-align:center;color:#556b8a;font-size:13px">Already have an account? <a href="/_sovereign/signin" style="color:#2B7FFF;text-decoration:none">Sign in</a></div>
+  <div class="footer">Already have an account? <a href="/_sovereign/signin" class="link">Sign in</a></div>
 </div>
 <script>
-// If already signed in, skip to dashboard
 var t=localStorage.getItem('sovereign_token');
 if(t)location.replace('/_sovereign/dashboard');
 
