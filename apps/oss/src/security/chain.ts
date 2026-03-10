@@ -31,6 +31,7 @@ import {
   generateNodeKeyPair, NodeKeyPair,
   MerkleTree, toHex,
 } from "./crypto.ts";
+import { sha3Hash } from "./pqc.ts";
 
 //  Event Types 
 
@@ -68,7 +69,8 @@ export interface Block {
   index:      number;
   ts:         number;
   prevHash:   string;
-  merkleRoot: string;          // root of this block's events
+  merkleRoot: string;          // root of this block's events (SHA-256)
+  merkleRootPQ?: string;       // post-quantum Merkle root (SHA3-256)
   eventCount: number;
   nodeId:     string;
   signature:  string;          // Ed25519 sig of blockHash
@@ -128,16 +130,17 @@ export class SovereignChain {
 
     this.db.run(`
       CREATE TABLE IF NOT EXISTS blocks (
-        idx         INTEGER PRIMARY KEY,
-        ts          INTEGER NOT NULL,
-        prev_hash   TEXT NOT NULL,
-        merkle_root TEXT NOT NULL,
-        event_count INTEGER NOT NULL,
-        node_id     TEXT NOT NULL,
-        signature   TEXT NOT NULL,
-        block_hash  TEXT NOT NULL UNIQUE,
-        acks        TEXT DEFAULT '[]',
-        anchored    INTEGER DEFAULT 0
+        idx             INTEGER PRIMARY KEY,
+        ts              INTEGER NOT NULL,
+        prev_hash       TEXT NOT NULL,
+        merkle_root     TEXT NOT NULL,
+        merkle_root_pq  TEXT DEFAULT '',
+        event_count     INTEGER NOT NULL,
+        node_id         TEXT NOT NULL,
+        signature       TEXT NOT NULL,
+        block_hash      TEXT NOT NULL UNIQUE,
+        acks            TEXT DEFAULT '[]',
+        anchored        INTEGER DEFAULT 0
       )
     `);
 
@@ -293,6 +296,20 @@ export class SovereignChain {
     const tree       = new MerkleTree(merkleLeaves);
     const merkleRoot = await tree.root();
 
+    // Post-quantum dual Merkle root (SHA3-256)
+    const pqLeaves = merkleLeaves.map(leaf => sha3Hash(leaf));
+    let pqNodes = pqLeaves;
+    while (pqNodes.length > 1) {
+      const next: string[] = [];
+      for (let i = 0; i < pqNodes.length; i += 2) {
+        const left  = pqNodes[i];
+        const right = pqNodes[i + 1] ?? pqNodes[i];
+        next.push(sha3Hash(left + right));
+      }
+      pqNodes = next;
+    }
+    const merkleRootPQ = pqNodes[0] ?? sha3Hash("empty");
+
     // Block hash = sha256 of canonical fields  single timestamp capture
     const ts = Date.now();
     const blockHash = await sha256(
@@ -307,6 +324,7 @@ export class SovereignChain {
       ts,
       prevHash,
       merkleRoot,
+      merkleRootPQ,
       eventCount: events.length,
       nodeId:     this.cfg.nodeId,
       signature,
@@ -316,12 +334,13 @@ export class SovereignChain {
 
     // Persist block
     this.db.prepare(`
-      INSERT INTO blocks (idx, ts, prev_hash, merkle_root, event_count,
+      INSERT INTO blocks (idx, ts, prev_hash, merkle_root, merkle_root_pq, event_count,
                           node_id, signature, block_hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       block.index, block.ts, block.prevHash, block.merkleRoot,
-      block.eventCount, block.nodeId, block.signature, block.blockHash
+      block.merkleRootPQ ?? "", block.eventCount, block.nodeId,
+      block.signature, block.blockHash
     );
 
     // Attach Merkle proofs to events
@@ -365,7 +384,7 @@ export class SovereignChain {
 
     console.log(
       `[Chain]  Block #${block.index} sealed  ${events.length} events` +
-      ` | root: ${merkleRoot.slice(0, 12)}`
+      ` | root: ${merkleRoot.slice(0, 12)} | pq: ${merkleRootPQ.slice(0, 12)}`
     );
 
     return block;

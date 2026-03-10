@@ -14,6 +14,7 @@
 import type { EventBus } from "../../../oss/src/events/bus.ts";
 import type { WorkflowEngine } from "../../../oss/src/workflows/engine.ts";
 import type { PolicyEngine } from "../../../oss/src/policies/engine.ts";
+import { IntentGuard } from "../../../oss/src/security/intent-guard.ts";
 
 export interface Intent {
   action:     string;         // "deploy_tenant" | "migrate" | "scale" | "audit" | "status" | "unknown"
@@ -135,6 +136,8 @@ function resolveRegion(input: string): string | undefined {
 // ── AI OS Interface ──
 
 export class AIOperatingSystem {
+  private intentGuard = new IntentGuard();
+
   constructor(
     private bus:      EventBus,
     private workflow: WorkflowEngine,
@@ -162,8 +165,20 @@ export class AIOperatingSystem {
     return { action: "unknown", entities: {}, confidence: 0, raw: trimmed };
   }
 
-  // Plan execution from intent
-  plan(intent: Intent): TaskPlan {
+  // Plan execution from intent (with IntentGuard validation)
+  plan(intent: Intent, userId = "anonymous"): TaskPlan {
+    // IntentGuard: validate confidence, rate limits, injection, param schemas
+    const guardResult = this.intentGuard.validate(
+      intent.action, intent.confidence, intent.entities, userId, intent.raw,
+    );
+    if (!guardResult.allowed) {
+      return { intent, steps: [], approved: false, reason: `IntentGuard: ${guardResult.reason}` };
+    }
+    // Use sanitized entities if provided
+    if (guardResult.sanitized) {
+      Object.assign(intent.entities, guardResult.sanitized);
+    }
+
     const steps: PlannedStep[] = [];
 
     switch (intent.action) {

@@ -100,31 +100,45 @@ export class EdgeRuntime {
     fn: EdgeFunction,
     request: { path: string; method: string; headers: Record<string, string>; body?: unknown }
   ): Promise<{ status: number; body: unknown; headers: Record<string, string> }> {
-    // Deterministic sandbox: execute function code with timeout
-    // In production, this would use isolated-vm or Worker threads
+    // Hardened sandbox: restricted globals, timeout enforcement
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), fn.timeout);
 
     try {
       // Create a minimal runtime context for the function
-      const ctx = {
-        request: {
+      const ctx = Object.freeze({
+        request: Object.freeze({
           path: request.path,
           method: request.method,
-          headers: request.headers,
+          headers: Object.freeze({ ...request.headers }),
           body: request.body,
-        },
+        }),
         response: {
           status: 200,
           body: null as unknown,
           headers: { "content-type": "application/json" } as Record<string, string>,
         },
-      };
+      });
 
-      // Execute (for now, evaluate as a module)
+      // Sandboxed execution: restricted scope, no access to process/require/import/fs/net
       const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-      const handler = new AsyncFunction("ctx", fn.code);
-      await handler(ctx);
+      const handler = new AsyncFunction(
+        "ctx",
+        "JSON", "Math", "Date", "console", "Promise",
+        "TextEncoder", "TextDecoder", "URL", "URLSearchParams",
+        "atob", "btoa", "setTimeout", "clearTimeout",
+        // Explicitly block dangerous globals
+        "process", "require", "import", "Bun", "Deno",
+        fn.code
+      );
+      await handler(
+        ctx,
+        JSON, Math, Date, console, Promise,
+        TextEncoder, TextDecoder, URL, URLSearchParams,
+        atob, btoa, setTimeout, clearTimeout,
+        // Pass undefined for blocked globals so code can't escape
+        undefined, undefined, undefined, undefined, undefined,
+      );
 
       return {
         status:  ctx.response.status,

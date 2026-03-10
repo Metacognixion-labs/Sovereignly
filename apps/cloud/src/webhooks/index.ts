@@ -23,6 +23,7 @@
  */
 
 import { hmac256 } from "../../../oss/src/security/crypto.ts";
+import { SSRFGuard } from "../../../oss/src/security/ssrf-guard.ts";
 import type { SovereignKV } from "../../../oss/src/kv/index.ts";
 import type { SovereignChain } from "../../../oss/src/security/chain.ts";
 
@@ -77,6 +78,7 @@ export class WebhookManager {
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private deliveryCount = 0;
   private failureCount = 0;
+  private ssrfGuard = new SSRFGuard();
 
   constructor(
     private chain?: SovereignChain,
@@ -88,6 +90,12 @@ export class WebhookManager {
   //  CRUD (webhooks stored in tenant KV) 
 
   async register(kv: SovereignKV, config: Omit<WebhookConfig, "id" | "createdAt">): Promise<WebhookConfig> {
+    // SSRF protection: validate webhook URL before registration
+    const urlCheck = this.ssrfGuard.validateURL(config.url);
+    if (!urlCheck.safe) {
+      throw new Error(`Webhook URL blocked: ${urlCheck.reason}`);
+    }
+
     const id = `wh_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
     const webhook: WebhookConfig = {
       ...config,
@@ -162,7 +170,8 @@ export class WebhookManager {
     const start = Date.now();
 
     try {
-      const res = await fetch(webhook.url, {
+      // SSRF-safe fetch: validates resolved IPs, blocks private ranges
+      const res = await this.ssrfGuard.safeFetch(webhook.url, {
         method: "POST",
         headers: {
           "Content-Type":         "application/json",
@@ -173,7 +182,6 @@ export class WebhookManager {
           "User-Agent":           "Sovereignly/4.0.0",
         },
         body,
-        signal: AbortSignal.timeout(10_000),
       });
 
       this.deliveryCount++;

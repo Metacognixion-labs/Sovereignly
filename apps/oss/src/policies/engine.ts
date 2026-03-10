@@ -6,6 +6,7 @@
 // From PLATFORM_PROTOCOL.md: "All operations require authentication and policy validation"
 
 import type { EventBus, SovereignEvent } from "../events/bus.ts";
+import { InputShield } from "../security/input-shield.ts";
 
 // -- Policy types --
 
@@ -100,6 +101,7 @@ export class PolicyEngine {
   private policies: Policy[] = [];
   private evaluationCount = 0;
   private denyCount = 0;
+  private inputShield = new InputShield();
 
   constructor(private bus?: EventBus) {
     // Load built-in policies
@@ -204,8 +206,9 @@ export class PolicyEngine {
   }
 
   // Resolve dotted field paths like "tenant.plan"
+  // Hardened: blocks prototype pollution vectors via InputShield
   private resolveField(field: string, context: Record<string, unknown>): unknown {
-    return field.split(".").reduce((obj: any, key) => obj?.[key], context);
+    return this.inputShield.safeFieldAccess(context, field);
   }
 
   // List policies

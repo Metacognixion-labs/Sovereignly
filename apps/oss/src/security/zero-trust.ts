@@ -21,6 +21,7 @@
 
 import type { Context, Next, MiddlewareHandler } from "hono";
 import { hmac256, hmac256Verify, sha256, timingSafeEqual } from "./crypto.ts";
+import { InputShield }                     from "./input-shield.ts";
 import type { SovereignChain }            from "./chain.ts";
 
 //  RBAC 
@@ -301,13 +302,40 @@ export interface ZeroTrustConfig {
 }
 
 export function createZeroTrustMiddleware(cfg: ZeroTrustConfig): MiddlewareHandler {
+  const shield = new InputShield();
+
   return async (c: Context, next: Next) => {
     const ip      = c.req.header("x-real-ip") ?? c.req.header("cf-connecting-ip") ?? "unknown";
     const path    = new URL(c.req.url).pathname;
     const method  = c.req.method;
     const reqId   = c.get("requestId") ?? crypto.randomUUID();
 
-    //  1. Check blocked IPs 
+    //  0. Input Shield: scan POST/PUT/PATCH bodies for injection
+    if (method === "POST" || method === "PUT" || method === "PATCH") {
+      try {
+        const contentType = c.req.header("content-type") ?? "";
+        if (contentType.includes("application/json")) {
+          const body = await c.req.json().catch(() => null);
+          if (body) {
+            const scan = shield.scanObject(body);
+            if (!scan.safe) {
+              void cfg.chain?.emit("ANOMALY", {
+                type:    "INPUT_INJECTION",
+                ip, path, method,
+                threats: scan.threats.map(t => t.type),
+              }, "HIGH");
+              return c.json({
+                error: "Request blocked: suspicious input detected",
+                threats: scan.threats.map(t => t.type),
+                requestId: reqId,
+              }, 400);
+            }
+          }
+        }
+      } catch { /* non-JSON body, skip scan */ }
+    }
+
+    //  1. Check blocked IPs
     if (cfg.anomaly.isBlocked(ip)) {
       void cfg.chain?.emit("AUTH_FAILURE", {
         ip, path, method, reason: "ip_blocked",
