@@ -156,15 +156,21 @@ line-height:1.6;display:none}
       <input id="name" type="text" placeholder="Acme Corp" required autocomplete="organization">
       <label for="email">Admin Email</label>
       <input id="email" type="email" placeholder="admin@company.com" required autocomplete="email">
-      <button type="submit" id="btn1">Send Verification Code</button>
+      <button type="submit" id="btn1">Continue</button>
     </form>
   </div>
 
-  <!-- Step 2: Verify Code -->
+  <!-- Step 2: Check Email / Verify Code -->
   <div class="step" id="step2">
-    <p style="color:var(--t-secondary);font-size:14px;margin-bottom:18px">
-      Enter the 6-digit code sent to <strong id="emailDisplay" style="color:var(--brand)"></strong>
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="width:48px;height:48px;border-radius:50%;background:rgba(13,242,59,.1);border:2px solid rgba(13,242,59,.2);display:inline-flex;align-items:center;justify-content:center">
+        <svg width="22" height="22" fill="none" stroke="#0df23b" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+      </div>
+    </div>
+    <p style="color:var(--t-secondary);font-size:14px;margin-bottom:6px;text-align:center">
+      Check your email! We sent a magic link to <strong id="emailDisplay" style="color:var(--brand)"></strong>
     </p>
+    <p style="color:var(--t-muted);font-size:12px;text-align:center;margin-bottom:18px">Click the link, or enter the 6-digit code below.</p>
     <form id="f2">
       <div class="code-inputs">
         <input type="text" maxlength="1" class="ci" autocomplete="off" inputmode="numeric">

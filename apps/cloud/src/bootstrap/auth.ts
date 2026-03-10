@@ -30,6 +30,8 @@ export function createAuth(cfg: Config) {
   const magicLink = new MagicLinkService({
     dataDir,
     emailTransport,
+    signingKey: cfg.jwtSecret ?? process.env.SOVEREIGN_SERVER_KEY ?? "dev-magic-key",
+    appUrl: cfg.appUrl,
   });
 
   const totpService = new TOTPService({

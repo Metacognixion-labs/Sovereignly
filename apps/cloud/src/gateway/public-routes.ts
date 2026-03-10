@@ -165,17 +165,23 @@ if(t)location.replace('/_sovereign/dashboard');
 
   <!-- Step 1: Email -->
   <div class="step active" id="s1">
-    <p class="sub">Enter the email you used to create your account.</p>
+    <p class="sub">Enter your email and we'll send you a magic link to sign in.</p>
     <form id="f1">
       <label for="email">Email</label>
       <input id="email" name="email" type="email" placeholder="you@company.com" required autocomplete="email">
-      <button type="submit" id="btn1">Send Code</button>
+      <button type="submit" id="btn1">Continue with email</button>
     </form>
   </div>
 
-  <!-- Step 2: Verification Code -->
+  <!-- Step 2: Check email / Code fallback -->
   <div class="step" id="s2">
-    <p class="sub">Enter the 6-digit code sent to <strong id="emailShow" style="color:var(--brand)"></strong></p>
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="width:48px;height:48px;border-radius:50%;background:rgba(13,242,59,.1);border:2px solid rgba(13,242,59,.2);display:inline-flex;align-items:center;justify-content:center">
+        <svg width="22" height="22" fill="none" stroke="#0df23b" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+      </div>
+    </div>
+    <p class="sub" style="text-align:center">Check your email! We sent a sign-in link to <strong id="emailShow" style="color:var(--brand)"></strong></p>
+    <p style="color:var(--t-muted);font-size:12px;text-align:center;margin-bottom:20px">Click the link in the email, or enter the 6-digit code below.</p>
     <form id="f2">
       <div class="code-row" id="codeRow">
         <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
@@ -393,6 +399,72 @@ document.getElementById('f3').addEventListener('submit',async e=>{
     });
   });
 
+  //  GET /_sovereign/auth/magic — Magic link handler (click from email)
+  app.get("/_sovereign/auth/magic", async (c) => {
+    if (!magicLink) return c.json({ error: "Magic links not configured" }, 503);
+
+    const token = c.req.query("token") ?? "";
+    const email = c.req.query("email") ?? "";
+    const purpose = (c.req.query("purpose") ?? "signin") as "signin" | "signup";
+
+    if (!token || !email) {
+      return c.html(magicResultPage("Invalid link", "This magic link is missing required parameters.", false));
+    }
+
+    const result = await magicLink.verifyMagicToken(token, email, purpose);
+    if (!result.valid) {
+      return c.html(magicResultPage("Link expired or invalid", result.error ?? "Please request a new sign-in link.", false));
+    }
+
+    const normalized = email.trim().toLowerCase();
+
+    // Signup: provision tenant
+    if (purpose === "signup") {
+      const existing = tenants.getTenantByOwner(normalized);
+      if (existing) {
+        // Already signed up — just sign them in
+        const jwt = await issueJWT(
+          { sub: normalized, tid: existing.id, role: "owner", verified: true } as any,
+          opts.jwtSecret, 86400 * 30
+        );
+        return c.html(magicResultPage("Welcome back!", "Redirecting to dashboard…", true, jwt, existing.id));
+      }
+      // New signup — we need the org name, redirect to a completion page
+      const pendingToken = await issueJWT(
+        { sub: normalized, role: "owner", scope: "signup_verified" } as any,
+        opts.jwtSecret, 300
+      );
+      return c.html(magicResultPage("Email verified!", "Completing your signup…", true, undefined, undefined, pendingToken));
+    }
+
+    // Signin: check TOTP
+    const tenant = tenants.getTenantByOwner(normalized);
+    if (!tenant) {
+      return c.html(magicResultPage("No account found", "No account exists for this email. Please sign up first.", false));
+    }
+
+    if (totp?.isEnabled(normalized)) {
+      const pendingToken = await issueJWT(
+        { sub: normalized, tid: tenant.id, role: "owner", scope: "totp_pending" } as any,
+        opts.jwtSecret, 300
+      );
+      // Redirect to TOTP step
+      return c.html(magicResultPage("2FA Required", "Redirecting to enter your authenticator code…", true, undefined, undefined, undefined, pendingToken));
+    }
+
+    // No TOTP — issue full JWT
+    const jwt = await issueJWT(
+      { sub: normalized, tid: tenant.id, role: "owner" },
+      opts.jwtSecret, 86400 * 30
+    );
+
+    void chain.emit("AUTH_SUCCESS", {
+      event: "magic_link_signin", tenantId: tenant.id, email: normalized,
+    }, { severity: "LOW", source: "magic-link" });
+
+    return c.html(magicResultPage("Signed in!", "Redirecting to dashboard…", true, jwt, tenant.id));
+  });
+
   //  Signup form (GET  serves HTML form)
   app.get("/_sovereign/signup", (c) => {
     return c.html(`<!DOCTYPE html>
@@ -466,8 +538,14 @@ if(t)location.replace('/_sovereign/dashboard');
 
   <!-- Step 2: Verify Email -->
   <div class="step" id="s2">
-    <h1>Verify your email</h1>
-    <p class="sub">Enter the 6-digit code sent to <strong id="emailShow" style="color:var(--brand)"></strong></p>
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="width:48px;height:48px;border-radius:50%;background:rgba(13,242,59,.1);border:2px solid rgba(13,242,59,.2);display:inline-flex;align-items:center;justify-content:center">
+        <svg width="22" height="22" fill="none" stroke="#0df23b" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+      </div>
+    </div>
+    <h1 style="text-align:center">Check your email</h1>
+    <p class="sub" style="text-align:center">We sent a verification link to <strong id="emailShow" style="color:var(--brand)"></strong></p>
+    <p style="color:var(--t-muted);font-size:12px;text-align:center;margin-bottom:20px">Click the link in your email, or enter the code below.</p>
     <form id="f2">
       <div class="code-row">
         <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
@@ -846,6 +924,62 @@ document.getElementById('f2').addEventListener('submit',async e=>{
       currency: "USD",
     });
   });
+}
+
+// ── Magic Link Result Page (handles redirects after clicking email link) ──────
+
+function magicResultPage(
+  title: string,
+  message: string,
+  success: boolean,
+  token?: string,
+  tenantId?: string,
+  signupPendingToken?: string,
+  totpPendingToken?: string,
+): string {
+  const icon = success
+    ? `<div style="width:56px;height:56px;border-radius:50%;background:rgba(13,242,59,.1);border:2px solid rgba(13,242,59,.3);display:flex;align-items:center;justify-content:center;margin:0 auto 20px">
+        <svg width="24" height="24" fill="none" stroke="#0df23b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+       </div>`
+    : `<div style="width:56px;height:56px;border-radius:50%;background:rgba(255,80,80,.1);border:2px solid rgba(255,80,80,.3);display:flex;align-items:center;justify-content:center;margin:0 auto 20px">
+        <svg width="24" height="24" fill="none" stroke="#ff6b6b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+       </div>`;
+
+  let script = "";
+  if (token && tenantId) {
+    script = `<script>
+localStorage.setItem('sovereign_token','${token}');
+localStorage.setItem('sovereign_tenant','${tenantId}');
+setTimeout(()=>location.href='/_sovereign/dashboard',1500);
+</script>`;
+  } else if (signupPendingToken) {
+    script = `<script>
+sessionStorage.setItem('signup_pending','${signupPendingToken}');
+setTimeout(()=>location.href='/_sovereign/signup?verified=1',1000);
+</script>`;
+  } else if (totpPendingToken) {
+    script = `<script>
+sessionStorage.setItem('totp_pending','${totpPendingToken}');
+setTimeout(()=>location.href='/_sovereign/signin?step=totp',1000);
+</script>`;
+  } else if (!success) {
+    script = `<script>setTimeout(()=>location.href='/_sovereign/signin',3000);</script>`;
+  }
+
+  return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>${title} — Sovereignly</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;background:#050a10;color:#f0f2f5;font-family:'Space Grotesk',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;-webkit-font-smoothing:antialiased">
+<div style="text-align:center;background:#111b2a;border:1px solid #1e293b;border-radius:16px;padding:48px 40px;max-width:440px;width:100%;margin:20px">
+  ${icon}
+  <h1 style="font-size:22px;font-weight:700;margin:0 0 8px;letter-spacing:-.02em">${title}</h1>
+  <p style="color:#94a3b8;font-size:14px;margin:0;line-height:1.5">${message}</p>
+  ${!success ? '<a href="/_sovereign/signin" style="display:inline-block;margin-top:24px;padding:12px 32px;background:#0df23b;color:#050a10;font-weight:600;text-decoration:none;border-radius:8px;font-size:14px">Try again</a>' : '<div style="margin-top:24px"><div style="width:20px;height:20px;border:2px solid #0df23b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;display:inline-block"></div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>'}
+</div>
+${script}
+</body></html>`;
 }
 
 // Simple in-memory signup rate limiter
