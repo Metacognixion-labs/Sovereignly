@@ -75,7 +75,7 @@ const omniAnchor = createOmniAnchor(config);
 const chain      = await createChain(config, omniAnchor);
 
 // 2. Auth
-const { oauthBroker, passkeys } = createAuth(config);
+const { oauthBroker, passkeys, magicLink, totpService } = createAuth(config);
 
 // 3. Tenants + billing + webhooks
 const { tenantManager, billing, tenantLimiter, webhookManager } = createTenantLayer(config, chain, omniAnchor);
@@ -139,7 +139,7 @@ chain.onBlock(async (block) => {
 // 10. Gateway + all routes
 const { app, metrics } = createPlatformGateway(config, {
   chain, runtime, kv, storage,
-  passkeys, oauthBroker,
+  passkeys, oauthBroker, magicLink, totpService,
   tenantManager, billing, tenantLimiter, webhookManager,
   ...kernel,
   ...ecosystem,

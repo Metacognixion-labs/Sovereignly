@@ -5,7 +5,11 @@ import { timingSafeEqual } from "../../../oss/src/security/crypto.ts";
  * Handles the revenue pipeline:
  *   GET  /                               Landing page
  *   GET  /_sovereign/dashboard           Admin dashboard (HTML SPA)
+ *   POST /_sovereign/signin              Step 1: request magic-link code
+ *   POST /_sovereign/signin/verify       Step 2: verify code → JWT (or TOTP challenge)
+ *   POST /_sovereign/signin/totp         Step 3: verify TOTP/backup code → full JWT
  *   POST /_sovereign/signup              Public free-tier signup (no auth)
+ *   POST /_sovereign/signup/verify       Verify email after signup
  *   POST /_sovereign/signup/upgrade      Create Stripe checkout for upgrade
  *   GET  /_sovereign/me                  Current user context (JWT  tenant)
  */
@@ -14,15 +18,35 @@ import type { Hono } from "hono";
 import type { TenantManager } from "../tenants/manager.ts";
 import type { BillingService } from "../billing/stripe.ts";
 import type { SovereignChain } from "../../../oss/src/security/chain.ts";
+import type { MagicLinkService } from "../../../oss/src/auth/magic-link.ts";
+import type { TOTPService }     from "../../../oss/src/auth/totp.ts";
 import { issueJWT, verifyJWT } from "../zero-trust.ts";
+import { registerSetupWizard, isSetupComplete } from "./setup-wizard.ts";
 
 export function registerPublicRoutes(
-  app:     Hono,
-  tenants: TenantManager,
-  billing: BillingService | null,
-  chain:   SovereignChain,
-  opts:    { jwtSecret: string; adminToken?: string }
+  app:       Hono,
+  tenants:   TenantManager,
+  billing:   BillingService | null,
+  chain:     SovereignChain,
+  opts:      { jwtSecret: string; adminToken?: string },
+  magicLink?: MagicLinkService,
+  totp?:      TOTPService,
 ) {
+
+  //  Setup Wizard Guard — redirect to setup if no tenants exist
+  if (magicLink) {
+    registerSetupWizard(app, { tenants, magicLink, jwtSecret: opts.jwtSecret });
+    app.use("*", async (c, next) => {
+      const path = new URL(c.req.url).pathname;
+      if (!isSetupComplete(tenants)
+        && path !== "/_sovereign/setup"
+        && path !== "/_sovereign/health"
+        && !path.startsWith("/_sovereign/auth/passkeys")) {
+        return c.redirect("/_sovereign/setup");
+      }
+      return next();
+    });
+  }
 
   //  Landing page 
   app.get("/", async (c) => {
@@ -128,43 +152,134 @@ line-height:1.6;display:none}
 var t=localStorage.getItem('sovereign_token');
 if(t)location.replace('/_sovereign/dashboard');
 </script>
+<style>
+.step{display:none}.step.active{display:block}
+.code-row{display:flex;gap:8px;margin-bottom:18px}
+.code-row input{width:44px;text-align:center;font-family:var(--mono);font-size:18px;font-weight:600;padding:12px 0}
+</style>
 </head>
 <body>
 <div class="card">
   <a href="/" class="back">&larr; Back to Sovereignly</a>
   <h1>Sign in</h1>
-  <p class="sub">Enter the email you used to create your account.</p>
-  <form id="f">
-    <label for="email">Email</label>
-    <input id="email" name="email" type="email" placeholder="you@company.com" required autocomplete="email">
-    <button type="submit" id="btn">Sign In</button>
-  </form>
+
+  <!-- Step 1: Email -->
+  <div class="step active" id="s1">
+    <p class="sub">Enter the email you used to create your account.</p>
+    <form id="f1">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" placeholder="you@company.com" required autocomplete="email">
+      <button type="submit" id="btn1">Send Code</button>
+    </form>
+  </div>
+
+  <!-- Step 2: Verification Code -->
+  <div class="step" id="s2">
+    <p class="sub">Enter the 6-digit code sent to <strong id="emailShow" style="color:var(--brand)"></strong></p>
+    <form id="f2">
+      <div class="code-row" id="codeRow">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+      </div>
+      <button type="submit" id="btn2">Verify</button>
+    </form>
+  </div>
+
+  <!-- Step 3: TOTP (if enabled) -->
+  <div class="step" id="s3">
+    <p class="sub">Enter the code from your authenticator app, or a backup code.</p>
+    <form id="f3">
+      <label for="totp">Authenticator Code</label>
+      <input id="totp" type="text" placeholder="000000 or xxxx-xxxx" required autocomplete="one-time-code" style="font-family:var(--mono);text-align:center;font-size:18px;letter-spacing:.15em">
+      <button type="submit" id="btn3">Sign In</button>
+    </form>
+  </div>
+
   <div id="msg" class="msg"></div>
   <div class="footer">No account yet? <a href="/_sovereign/signup" class="link">Create one free</a></div>
 </div>
 <script>
-const f=document.getElementById('f'),msg=document.getElementById('msg'),btn=document.getElementById('btn');
-f.addEventListener('submit',async e=>{
-  e.preventDefault();btn.disabled=true;btn.textContent='Signing in…';
-  msg.className='msg';msg.textContent='';
+let savedEmail='',pendingToken='';
+const msg=document.getElementById('msg');
+function showErr(t){msg.className='msg err';msg.textContent=t;}
+function hideMsg(){msg.className='msg';}
+function showStep(n){document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));document.getElementById('s'+n).classList.add('active');}
+
+// Code inputs auto-advance
+const cis=document.querySelectorAll('.ci');
+cis.forEach((ci,i)=>{
+  ci.addEventListener('input',()=>{if(ci.value&&i<cis.length-1)cis[i+1].focus();});
+  ci.addEventListener('keydown',e=>{if(e.key==='Backspace'&&!ci.value&&i>0)cis[i-1].focus();});
+  ci.addEventListener('paste',e=>{const t=(e.clipboardData||window.clipboardData).getData('text').replace(/\\D/g,'');
+    if(t.length===6){e.preventDefault();cis.forEach((c,j)=>{c.value=t[j]||'';});cis[5].focus();}});
+});
+
+// Step 1: Request code
+document.getElementById('f1').addEventListener('submit',async e=>{
+  e.preventDefault();hideMsg();const btn=document.getElementById('btn1');
+  btn.disabled=true;btn.textContent='Sending…';
+  savedEmail=document.getElementById('email').value;
   try{
     const r=await fetch('/_sovereign/signin',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({email:f.email.value})});
+      body:JSON.stringify({email:savedEmail})});
     const d=await r.json();
-    if(!r.ok)throw new Error(d.error||'Sign in failed');
+    if(!r.ok)throw new Error(d.error||'Failed');
+    if(d.requiresCode){
+      document.getElementById('emailShow').textContent=savedEmail;
+      showStep(2);cis[0].focus();
+    }else if(d.token){
+      localStorage.setItem('sovereign_token',d.token);
+      localStorage.setItem('sovereign_tenant',d.tenant.id);
+      location.href='/_sovereign/dashboard';
+    }
+  }catch(err){showErr(err.message);btn.disabled=false;btn.textContent='Send Code';}
+});
+
+// Step 2: Verify code
+document.getElementById('f2').addEventListener('submit',async e=>{
+  e.preventDefault();hideMsg();const btn=document.getElementById('btn2');
+  btn.disabled=true;btn.textContent='Verifying…';
+  const code=Array.from(cis).map(c=>c.value).join('');
+  if(code.length!==6){showErr('Enter all 6 digits');btn.disabled=false;btn.textContent='Verify';return;}
+  try{
+    const r=await fetch('/_sovereign/signin/verify',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({email:savedEmail,code})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Verification failed');
+    if(d.requiresTOTP){
+      pendingToken=d.pendingToken;showStep(3);document.getElementById('totp').focus();
+    }else{
+      localStorage.setItem('sovereign_token',d.token);
+      localStorage.setItem('sovereign_tenant',d.tenant.id);
+      location.href='/_sovereign/dashboard';
+    }
+  }catch(err){showErr(err.message);btn.disabled=false;btn.textContent='Verify';}
+});
+
+// Step 3: TOTP
+document.getElementById('f3').addEventListener('submit',async e=>{
+  e.preventDefault();hideMsg();const btn=document.getElementById('btn3');
+  btn.disabled=true;btn.textContent='Verifying…';
+  try{
+    const r=await fetch('/_sovereign/signin/totp',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({pendingToken,code:document.getElementById('totp').value})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Invalid code');
     localStorage.setItem('sovereign_token',d.token);
-    localStorage.setItem('sovereign_tenant',d.tenant.id);
+    if(d.tenant)localStorage.setItem('sovereign_tenant',d.tenant.id);
     location.href='/_sovereign/dashboard';
-  }catch(err){
-    msg.className='msg err';msg.textContent=err.message;
-    btn.disabled=false;btn.textContent='Sign In';
-  }
+  }catch(err){showErr(err.message);btn.disabled=false;btn.textContent='Sign In';}
 });
 </script>
 </body>
 </html>`);
   });
 
+  //  POST /_sovereign/signin — Step 1: send verification code
   app.post("/_sovereign/signin", async (c) => {
     const body = await c.req.json().catch(() => ({})) as any;
     const { email } = body;
@@ -174,6 +289,48 @@ f.addEventListener('submit',async e=>{
     const tenant = tenants.getTenantByOwner(normalized);
     if (!tenant) return c.json({ error: "No account found for this email. Sign up first." }, 404);
 
+    if (magicLink) {
+      const result = await magicLink.requestCode(normalized, "signin");
+      if (!result.ok) return c.json({ error: result.error }, 429);
+      return c.json({ ok: true, requiresCode: true, message: "Verification code sent to your email" });
+    }
+
+    // Fallback if magic-link not configured (shouldn't happen in production)
+    const token = await issueJWT(
+      { sub: normalized, tid: tenant.id, role: "owner" },
+      opts.jwtSecret,
+      86400 * 30
+    );
+    return c.json({ ok: true, tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan }, token });
+  });
+
+  //  POST /_sovereign/signin/verify — Step 2: verify code → JWT or TOTP challenge
+  app.post("/_sovereign/signin/verify", async (c) => {
+    if (!magicLink) return c.json({ error: "Magic link not configured" }, 503);
+
+    const body = await c.req.json().catch(() => ({})) as any;
+    const { email, code } = body;
+    if (!email?.trim() || !code?.trim()) return c.json({ error: "Email and code required" }, 400);
+
+    const normalized = email.trim().toLowerCase();
+    const tenant = tenants.getTenantByOwner(normalized);
+    if (!tenant) return c.json({ error: "No account found" }, 404);
+
+    const result = await magicLink.verifyCode(normalized, code, "signin");
+    if (!result.valid) return c.json({ error: result.error }, 401);
+
+    // Check if TOTP is enabled for this user
+    if (totp?.isEnabled(normalized)) {
+      // Issue a short-lived pending token (5 min) that requires TOTP to upgrade
+      const pendingToken = await issueJWT(
+        { sub: normalized, tid: tenant.id, role: "owner", scope: "totp_pending" } as any,
+        opts.jwtSecret,
+        300 // 5 minutes
+      );
+      return c.json({ ok: true, requiresTOTP: true, pendingToken });
+    }
+
+    // No TOTP — issue full session JWT
     const token = await issueJWT(
       { sub: normalized, tid: tenant.id, role: "owner" },
       opts.jwtSecret,
@@ -187,6 +344,50 @@ f.addEventListener('submit',async e=>{
     return c.json({
       ok: true,
       tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan },
+      token,
+      dashboard: "/_sovereign/dashboard",
+    });
+  });
+
+  //  POST /_sovereign/signin/totp — Step 3: verify TOTP or backup code
+  app.post("/_sovereign/signin/totp", async (c) => {
+    if (!totp) return c.json({ error: "TOTP not configured" }, 503);
+
+    const body = await c.req.json().catch(() => ({})) as any;
+    const { pendingToken, code } = body;
+    if (!pendingToken || !code?.trim()) return c.json({ error: "Pending token and code required" }, 400);
+
+    const { valid, payload } = await verifyJWT(pendingToken, opts.jwtSecret);
+    if (!valid || !payload || (payload as any).scope !== "totp_pending") {
+      return c.json({ error: "Invalid or expired pending token" }, 401);
+    }
+
+    const codeClean = code.trim();
+    let verified = false;
+
+    // Try TOTP code (6 digits) or backup code (xxxx-xxxx format)
+    if (/^\d{6}$/.test(codeClean)) {
+      verified = await totp.verify(payload.sub, codeClean);
+    } else if (/^[a-f0-9]{4}-[a-f0-9]{4}$/i.test(codeClean)) {
+      verified = await totp.verifyBackupCode(payload.sub, codeClean);
+    }
+
+    if (!verified) return c.json({ error: "Invalid code" }, 401);
+
+    const tenant = tenants.getTenantByOwner(payload.sub);
+    const token = await issueJWT(
+      { sub: payload.sub, tid: payload.tid, role: "owner" },
+      opts.jwtSecret,
+      86400 * 30
+    );
+
+    void chain.emit("AUTH_SUCCESS", {
+      event: "signin_totp", tenantId: payload.tid, email: payload.sub,
+    }, { severity: "LOW", source: "public-signin" });
+
+    return c.json({
+      ok: true,
+      tenant: tenant ? { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan } : null,
       token,
       dashboard: "/_sovereign/dashboard",
     });
@@ -236,42 +437,107 @@ line-height:1.6;display:none}
 .link:hover{text-decoration:underline}
 .footer{margin-top:20px;text-align:center;color:var(--t-muted);font-size:13px}
 </style>
+<style>
+.step{display:none}.step.active{display:block}
+.code-row{display:flex;gap:8px;margin-bottom:18px}
+.code-row input{width:44px;text-align:center;font-family:var(--mono);font-size:18px;font-weight:600;padding:12px 0}
+</style>
+<script>
+var t=localStorage.getItem('sovereign_token');
+if(t)location.replace('/_sovereign/dashboard');
+</script>
 </head>
 <body>
 <div class="card">
   <a href="/" class="back">&larr; Back to Sovereignly</a>
-  <h1>Create your account</h1>
-  <p class="sub">Free tier — 10K events/mo, 3 functions, instant activation.</p>
-  <form id="f">
-    <label for="name">Organization / Project Name</label>
-    <input id="name" name="name" type="text" placeholder="Acme Corp" required autocomplete="organization">
-    <label for="email">Email</label>
-    <input id="email" name="email" type="email" placeholder="you@company.com" required autocomplete="email">
-    <button type="submit" id="btn">Create Account</button>
-  </form>
+
+  <!-- Step 1: Name + Email -->
+  <div class="step active" id="s1">
+    <h1>Create your account</h1>
+    <p class="sub">Free tier — 10K events/mo, 3 functions, instant activation.</p>
+    <form id="f1">
+      <label for="name">Organization / Project Name</label>
+      <input id="name" name="name" type="text" placeholder="Acme Corp" required autocomplete="organization">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" placeholder="you@company.com" required autocomplete="email">
+      <button type="submit" id="btn1">Create Account</button>
+    </form>
+  </div>
+
+  <!-- Step 2: Verify Email -->
+  <div class="step" id="s2">
+    <h1>Verify your email</h1>
+    <p class="sub">Enter the 6-digit code sent to <strong id="emailShow" style="color:var(--brand)"></strong></p>
+    <form id="f2">
+      <div class="code-row">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+        <input type="text" maxlength="1" class="ci" inputmode="numeric" autocomplete="off">
+      </div>
+      <button type="submit" id="btn2">Verify & Create</button>
+    </form>
+  </div>
+
   <div id="msg" class="msg"></div>
   <div class="footer">Already have an account? <a href="/_sovereign/signin" class="link">Sign in</a></div>
 </div>
 <script>
-var t=localStorage.getItem('sovereign_token');
-if(t)location.replace('/_sovereign/dashboard');
+let savedName='',savedEmail='';
+const msg=document.getElementById('msg');
+function showErr(t){msg.className='msg err';msg.textContent=t;}
+function showOk(t){msg.className='msg ok';msg.textContent=t;}
+function hideMsg(){msg.className='msg';}
+function showStep(n){document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));document.getElementById('s'+n).classList.add('active');}
 
-const f=document.getElementById('f'),msg=document.getElementById('msg'),btn=document.getElementById('btn');
-f.addEventListener('submit',async e=>{
-  e.preventDefault();btn.disabled=true;btn.textContent='Creating…';
-  msg.className='msg';msg.textContent='';
+const cis=document.querySelectorAll('.ci');
+cis.forEach((ci,i)=>{
+  ci.addEventListener('input',()=>{if(ci.value&&i<cis.length-1)cis[i+1].focus();});
+  ci.addEventListener('keydown',e=>{if(e.key==='Backspace'&&!ci.value&&i>0)cis[i-1].focus();});
+  ci.addEventListener('paste',e=>{const t=(e.clipboardData||window.clipboardData).getData('text').replace(/\\D/g,'');
+    if(t.length===6){e.preventDefault();cis.forEach((c,j)=>{c.value=t[j]||'';});cis[5].focus();}});
+});
+
+// Step 1: Submit signup
+document.getElementById('f1').addEventListener('submit',async e=>{
+  e.preventDefault();hideMsg();const btn=document.getElementById('btn1');
+  btn.disabled=true;btn.textContent='Creating…';
+  savedName=document.getElementById('name').value;
+  savedEmail=document.getElementById('email').value;
   try{
     const r=await fetch('/_sovereign/signup',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({name:f.name.value,email:f.email.value})});
+      body:JSON.stringify({name:savedName,email:savedEmail})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'Signup failed');
+    if(d.requiresVerification){
+      document.getElementById('emailShow').textContent=savedEmail;
+      showStep(2);cis[0].focus();
+    }else if(d.token){
+      localStorage.setItem('sovereign_token',d.token);
+      localStorage.setItem('sovereign_tenant',d.tenant.id);
+      location.href='/_sovereign/dashboard';
+    }
+  }catch(err){showErr(err.message);btn.disabled=false;btn.textContent='Create Account';}
+});
+
+// Step 2: Verify code
+document.getElementById('f2').addEventListener('submit',async e=>{
+  e.preventDefault();hideMsg();const btn=document.getElementById('btn2');
+  btn.disabled=true;btn.textContent='Verifying…';
+  const code=Array.from(cis).map(c=>c.value).join('');
+  if(code.length!==6){showErr('Enter all 6 digits');btn.disabled=false;btn.textContent='Verify & Create';return;}
+  try{
+    const r=await fetch('/_sovereign/signup/verify',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({name:savedName,email:savedEmail,code})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Verification failed');
     localStorage.setItem('sovereign_token',d.token);
     localStorage.setItem('sovereign_tenant',d.tenant.id);
-    location.href='/_sovereign/dashboard';
-  }catch(err){
-    msg.className='msg err';msg.textContent=err.message;
-    btn.disabled=false;btn.textContent='Create Account';
-  }
+    showOk('Account created! Redirecting…');
+    setTimeout(()=>location.href='/_sovereign/dashboard',1000);
+  }catch(err){showErr(err.message);btn.disabled=false;btn.textContent='Verify & Create';}
 });
 </script>
 </body>
@@ -318,61 +584,84 @@ f.addEventListener('submit',async e=>{
     signupLimiter.set(rateLimitKey, attempts);
 
     try {
-      // Provision free-tier tenant
+      const normalized = email.trim().toLowerCase();
+
+      // If magic-link is available, send verification code first (don't provision yet)
+      if (magicLink) {
+        const codeResult = await magicLink.requestCode(normalized, "signup");
+        if (!codeResult.ok) return c.json({ error: codeResult.error }, 429);
+
+        return c.json({
+          ok: true,
+          requiresVerification: true,
+          message: "Verification code sent to your email. Please verify to complete signup.",
+        }, 200);
+      }
+
+      // Fallback: provision immediately (when magic-link not configured)
       const tenant = await tenants.provision({
         name:    name.trim(),
-        ownerId: email.trim().toLowerCase(),
+        ownerId: normalized,
         plan:    "free",
       });
 
-      // Issue JWT for the new owner (30-day expiry)
       const token = await issueJWT(
-        { sub: email.trim().toLowerCase(), tid: tenant.id, role: "owner" },
+        { sub: normalized, tid: tenant.id, role: "owner" },
         opts.jwtSecret,
-        86400 * 30 // 30 days
+        86400 * 30
       );
 
-      // Audit + user creation event
       void chain.emit("CONFIG_CHANGE", {
-        event:    "public_signup",
-        tenantId: tenant.id,
-        email:    email.trim().toLowerCase(),
-        plan:     "free",
-        ip,
+        event: "public_signup", tenantId: tenant.id, email: normalized, plan: "free", ip,
       }, "LOW");
-
-      // Emit user creation for the event bus (auth system can pick this up)
-      if (typeof globalThis.__sovereignlyBus !== "undefined") {
-        void (globalThis as any).__sovereignlyBus.emit("TENANT_CREATED", {
-          tenantId: tenant.id,
-          userId:   email.trim().toLowerCase(),
-          name:     name.trim(),
-          plan:     "free",
-          method:   "public_signup",
-        }, { source: "public-signup", tenantId: tenant.id });
-      }
 
       return c.json({
         ok: true,
-        tenant: {
-          id:   tenant.id,
-          name: tenant.name,
-          slug: tenant.slug,
-          plan: tenant.plan,
-        },
+        tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan },
         token,
         dashboard: `/_sovereign/dashboard`,
-        apiBase:   `/_sovereign/tenants/${tenant.id}`,
-        nextSteps: [
-          "Save the token  it's your API key for 30 days",
-          "Install the SDK: npm install @metacognixion/chain-sdk",
-          "Start emitting events to your audit chain",
-          "Upgrade to Starter ($49/mo) for compliance reports + 1M events/mo",
-        ],
       }, 201);
     } catch (err: any) {
       return c.json({ error: err.message }, 400);
     }
+  });
+
+  //  Verify signup email
+  app.post("/_sovereign/signup/verify", async (c) => {
+    if (!magicLink) return c.json({ error: "Email verification not configured" }, 503);
+
+    const body = await c.req.json().catch(() => ({})) as any;
+    const { name, email, code } = body;
+    if (!email?.trim() || !code?.trim()) return c.json({ error: "Email and code required" }, 400);
+
+    const normalized = email.trim().toLowerCase();
+    const result = await magicLink.verifyCode(normalized, code, "signup");
+    if (!result.valid) return c.json({ error: result.error }, 401);
+
+    // Now provision the tenant
+    const tenant = await tenants.provision({
+      name:    (name ?? "").trim() || normalized.split("@")[0],
+      ownerId: normalized,
+      plan:    "free",
+    });
+
+    const token = await issueJWT(
+      { sub: normalized, tid: tenant.id, role: "owner", verified: true } as any,
+      opts.jwtSecret,
+      86400 * 30
+    );
+
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    void chain.emit("CONFIG_CHANGE", {
+      event: "public_signup_verified", tenantId: tenant.id, email: normalized, plan: "free", ip,
+    }, "LOW");
+
+    return c.json({
+      ok: true,
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan },
+      token,
+      dashboard: `/_sovereign/dashboard`,
+    }, 201);
   });
 
   //  Upgrade to paid plan (requires existing JWT) 

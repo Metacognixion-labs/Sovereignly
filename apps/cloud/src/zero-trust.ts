@@ -42,12 +42,14 @@ export function can(role: Role, permission: string): boolean {
 //  JWT (HMAC-SHA256, no library) 
 
 export interface JWTPayload {
-  sub:   string;   // node id or user id
-  role:  Role;
-  tid?:  string;   // tenant id (for tenant-scoped tokens)
-  iat:   number;   // issued at (seconds)
-  exp:   number;   // expiry (seconds)
-  jti:   string;   // unique token id (for revocation)
+  sub:       string;   // node id or user id
+  role:      Role;
+  tid?:      string;   // tenant id (for tenant-scoped tokens)
+  iat:       number;   // issued at (seconds)
+  exp:       number;   // expiry (seconds)
+  jti:       string;   // unique token id (for revocation)
+  verified?: boolean;  // email verification status
+  scope?:    string;   // restricted scope (e.g. "totp_pending")
 }
 
 export async function issueJWT(

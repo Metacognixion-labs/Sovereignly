@@ -211,7 +211,8 @@ export function registerAuthRoutes(
   passkeys: PasskeyEngine,
   oauth:    OAuthBroker,
   chain:    SovereignChain,
-  cfg: { jwtSecret: string; adminToken?: string; appUrl: string; dataDir?: string }
+  cfg: { jwtSecret: string; adminToken?: string; appUrl: string; dataDir?: string },
+  totpService?: import("../auth/totp.ts").TOTPService,
 ) {
   const dataDir = cfg.dataDir ?? "./data/platform";
   const users   = new UserStore(dataDir);
@@ -399,7 +400,80 @@ export function registerAuthRoutes(
     return c.json(users.stats());
   });
 
-  //  PORTAL PAGE 
+  //  TOTP 2FA MANAGEMENT
+
+  // Helper: extract user from JWT
+  const requireJWT = async (c: any): Promise<{ sub: string; role: string } | null> => {
+    const b = c.req.header("authorization")?.slice(7);
+    if (!b) return null;
+    const { valid, payload } = await verifyJWT(b, cfg.jwtSecret);
+    return valid && payload ? payload : null;
+  };
+
+  //  TOTP  Setup (generate secret + otpauth URI)
+  app.post("/_sovereign/auth/totp/setup", async (c) => {
+    const payload = await requireJWT(c);
+    if (!payload) return c.json({ error: "Bearer token required" }, 401);
+    if (!totpService) return c.json({ error: "TOTP not configured" }, 503);
+    const user = users.get(payload.sub);
+    const email = user?.email ?? payload.sub;
+    const result = await totpService.setup(payload.sub, email);
+    return c.json({ secret: result.secret, otpauthUri: result.otpauthUri });
+  });
+
+  //  TOTP  Confirm (verify code → enable + return backup codes)
+  app.post("/_sovereign/auth/totp/confirm", async (c) => {
+    const payload = await requireJWT(c);
+    if (!payload) return c.json({ error: "Bearer token required" }, 401);
+    if (!totpService) return c.json({ error: "TOTP not configured" }, 503);
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
+    if (!body.code) return c.json({ error: "code required" }, 400);
+    const result = await totpService.confirm(payload.sub, body.code);
+    if (!result.ok) return c.json({ error: result.error }, 400);
+    void chain.emit("AUTH_SUCCESS", { userId: payload.sub, method: "totp_enabled", ip: clientIP(c) }, "LOW");
+    return c.json({ ok: true, backupCodes: result.backupCodes });
+  });
+
+  //  TOTP  Status
+  app.get("/_sovereign/auth/totp/status", async (c) => {
+    const payload = await requireJWT(c);
+    if (!payload) return c.json({ error: "Bearer token required" }, 401);
+    if (!totpService) return c.json({ enabled: false });
+    return c.json({
+      enabled: totpService.isEnabled(payload.sub),
+      remainingBackupCodes: totpService.remainingBackupCodes(payload.sub),
+    });
+  });
+
+  //  TOTP  Disable (requires valid TOTP code)
+  app.post("/_sovereign/auth/totp/disable", async (c) => {
+    const payload = await requireJWT(c);
+    if (!payload) return c.json({ error: "Bearer token required" }, 401);
+    if (!totpService) return c.json({ error: "TOTP not configured" }, 503);
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
+    if (!body.code) return c.json({ error: "code required" }, 400);
+    const result = await totpService.disable(payload.sub, body.code);
+    if (!result.ok) return c.json({ error: result.error }, 400);
+    void chain.emit("AUTH_SUCCESS", { userId: payload.sub, method: "totp_disabled", ip: clientIP(c) }, "LOW");
+    return c.json({ ok: true });
+  });
+
+  //  TOTP  Regenerate Backup Codes
+  app.post("/_sovereign/auth/totp/regenerate-codes", async (c) => {
+    const payload = await requireJWT(c);
+    if (!payload) return c.json({ error: "Bearer token required" }, 401);
+    if (!totpService) return c.json({ error: "TOTP not configured" }, 503);
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
+    if (!body.code) return c.json({ error: "TOTP code required" }, 400);
+    const result = await totpService.regenerateBackupCodes(payload.sub, body.code);
+    if (!result.ok) return c.json({ error: result.error }, 400);
+    return c.json({ ok: true, backupCodes: result.backupCodes });
+  });
+
+  //  PORTAL PAGE
   app.get("/_sovereign/auth", (c) => {
     const providers = oauth.getSupportedProviders();
     return c.html(`<!DOCTYPE html><html lang="en"><head>

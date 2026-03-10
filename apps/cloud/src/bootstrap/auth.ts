@@ -1,9 +1,12 @@
 /**
- * Bootstrap: OAuth + Passkeys
+ * Bootstrap: OAuth + Passkeys + Magic Link + TOTP
  */
 
 import { OAuthBroker }   from "@sovereignly/oss/auth/oauth";
 import { PasskeyEngine } from "@sovereignly/oss/auth/passkeys";
+import { MagicLinkService } from "../../../oss/src/auth/magic-link.ts";
+import { TOTPService }      from "../../../oss/src/auth/totp.ts";
+import { createEmailTransport } from "../../../oss/src/auth/email-transport.ts";
 import type { Config } from "./config.ts";
 
 export function createAuth(cfg: Config) {
@@ -21,5 +24,18 @@ export function createAuth(cfg: Config) {
     origin:  cfg.appUrl,
   });
 
-  return { oauthBroker, passkeys };
+  const emailTransport = createEmailTransport();
+  const dataDir = `${cfg.dataDir}/platform`;
+
+  const magicLink = new MagicLinkService({
+    dataDir,
+    emailTransport,
+  });
+
+  const totpService = new TOTPService({
+    dataDir,
+    encPassword: cfg.jwtSecret ?? process.env.SOVEREIGN_SERVER_KEY ?? "dev-totp-key",
+  });
+
+  return { oauthBroker, passkeys, magicLink, totpService };
 }

@@ -63,6 +63,9 @@ export function createPlatformGateway(cfg: Config, deps: {
   costOptimizer: any;
   // Kernel orchestrator
   sovereignKernel: any;
+  // Auth services
+  magicLink?: any;
+  totpService?: any;
 }) {
   const compliance = new ComplianceEngine(deps.chain);
   const anomaly    = new AnomalyDetector(deps.chain);
@@ -87,12 +90,12 @@ export function createPlatformGateway(cfg: Config, deps: {
 
   // OSS routes (MIT)
   registerChainRoutes(app, deps.chain, compliance, { adminToken: cfg.adminToken, jwtSecret: cfg.jwtSecret });
-  registerAuthRoutes(app, deps.passkeys, deps.oauthBroker, deps.chain, { jwtSecret: cfg.jwtSecret, adminToken: cfg.adminToken, appUrl: cfg.appUrl, dataDir: `${cfg.dataDir}/platform` });
+  registerAuthRoutes(app, deps.passkeys, deps.oauthBroker, deps.chain, { jwtSecret: cfg.jwtSecret, adminToken: cfg.adminToken, appUrl: cfg.appUrl, dataDir: `${cfg.dataDir}/platform` }, deps.totpService);
 
   // Premium routes (BSL)
   registerTenantRoutes(app, deps.tenantManager, deps.billing, deps.chain, { jwtSecret: cfg.jwtSecret, adminToken: cfg.adminToken });
   if (deps.billing) registerBillingRoutes(app, deps.billing, { jwtSecret: cfg.jwtSecret });
-  registerPublicRoutes(app, deps.tenantManager, deps.billing, deps.chain, { jwtSecret: cfg.jwtSecret, adminToken: cfg.adminToken });
+  registerPublicRoutes(app, deps.tenantManager, deps.billing, deps.chain, { jwtSecret: cfg.jwtSecret, adminToken: cfg.adminToken }, deps.magicLink, deps.totpService);
   registerWebhookRoutes(app, deps.tenantManager, deps.webhookManager, deps.chain, { jwtSecret: cfg.jwtSecret, adminToken: cfg.adminToken });
 
   // Ecosystem routes
