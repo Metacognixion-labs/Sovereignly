@@ -27,12 +27,12 @@ primary_region = "iad"
     soft_limit = 200
 
   [[http_service.checks]]
-    grace_period = "10s"
+    grace_period = "30s"
     interval     = "15s"
     method       = "GET"
     path         = "/_sovereign/health"
     protocol     = "http"
-    timeout      = "3s"
+    timeout      = "5s"
 
 [[vm]]
   size   = "shared-cpu-1x"

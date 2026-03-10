@@ -35,12 +35,13 @@ export class CognitiveModel {
   constructor(
     private bus:   EventBus,
     private state: StateRegistry,
+    opts?: { intervalMs?: number },
   ) {
     // Ingest all events for learning
     this.subId = bus.on("*", (e) => this.learn(e), "cognitive-model");
 
-    // Periodic analysis every 2 minutes
-    this.sweepInterval = setInterval(() => this.analyze(), 120_000);
+    // Periodic analysis (default 120s, configurable for single-node)
+    this.sweepInterval = setInterval(() => this.analyze(), opts?.intervalMs ?? 120_000);
   }
 
   private learn(event: SovereignEvent) {

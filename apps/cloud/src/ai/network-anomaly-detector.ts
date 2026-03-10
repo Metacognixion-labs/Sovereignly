@@ -27,28 +27,31 @@ export interface NetworkAnomaly {
 export class NetworkAnomalyDetector {
   private anomalies: NetworkAnomaly[] = [];
   private maxHistory = 500;
-  private interval: ReturnType<typeof setInterval>;
+  private interval: ReturnType<typeof setInterval> | null = null;
   private prevNodeCount = 0;
 
   constructor(
     private bus: EventBus,
     private nodeRegistry: NodeRegistry,
+    opts?: { enabled?: boolean },
   ) {
-    // Check every 30 seconds
-    this.interval = setInterval(() => this.detect(), 30_000);
+    if (opts?.enabled !== false) {
+      // Check every 30 seconds
+      this.interval = setInterval(() => this.detect(), 30_000);
 
-    // Listen for node leave events
-    bus.on("NODE_LEAVE", (e) => {
-      if (e.payload.reason === "heartbeat_timeout") {
-        this.record({
-          type: "unexpected_node_loss",
-          severity: "critical",
-          message: `Node ${e.payload.nodeId} went offline unexpectedly (region: ${e.payload.region})`,
-          nodeId: e.payload.nodeId as string,
-          region: e.payload.region as string,
-        });
-      }
-    }, "network-anomaly-detector");
+      // Listen for node leave events
+      bus.on("NODE_LEAVE", (e) => {
+        if (e.payload.reason === "heartbeat_timeout") {
+          this.record({
+            type: "unexpected_node_loss",
+            severity: "critical",
+            message: `Node ${e.payload.nodeId} went offline unexpectedly (region: ${e.payload.region})`,
+            nodeId: e.payload.nodeId as string,
+            region: e.payload.region as string,
+          });
+        }
+      }, "network-anomaly-detector");
+    }
   }
 
   /** Periodic anomaly detection sweep */
@@ -122,5 +125,5 @@ export class NetworkAnomalyDetector {
     };
   }
 
-  close() { clearInterval(this.interval); }
+  close() { if (this.interval) clearInterval(this.interval); }
 }

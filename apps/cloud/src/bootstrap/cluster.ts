@@ -63,11 +63,12 @@ export function createCluster(
   sovereignKernel.services.register("globalAnchor", globalAnchor);
   sovereignKernel.services.register("clusterRoot", clusterRootComputer);
 
-  // AI Orchestration
-  const clusterBalancer        = new ClusterBalancer(eventBus, nodeRegistry);
+  // AI Orchestration (disabled on single-node deployments -- no peers to balance)
+  const multiNode = cfg.clusterPeers.length > 0;
+  const clusterBalancer        = new ClusterBalancer(eventBus, nodeRegistry, { enabled: multiNode });
   const workloadPlanner        = new WorkloadPlanner(nodeRegistry, placementEngine);
-  const networkAnomalyDetector = new NetworkAnomalyDetector(eventBus, nodeRegistry);
-  const costOptimizer          = new CostOptimizer(nodeRegistry, stateRegistry);
+  const networkAnomalyDetector = new NetworkAnomalyDetector(eventBus, nodeRegistry, { enabled: multiNode });
+  const costOptimizer          = new CostOptimizer(nodeRegistry, stateRegistry, { enabled: multiNode });
 
   sovereignKernel.services.register("clusterBalancer", clusterBalancer);
   sovereignKernel.services.register("workloadPlanner", workloadPlanner);

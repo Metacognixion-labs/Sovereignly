@@ -227,6 +227,15 @@ export class TenantManager {
     return this.get(row.id);
   }
 
+  /** Look up tenant metadata by owner email */
+  getTenantByOwner(ownerEmail: string): Tenant | null {
+    const row = this.registry.prepare(
+      "SELECT * FROM tenants WHERE owner_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1"
+    ).get(ownerEmail) as any;
+    if (!row) return null;
+    return this.rowToTenant(row);
+  }
+
   async suspend(tenantId: string, reason: string): Promise<void> {
     this.registry.prepare(
       "UPDATE tenants SET status = 'suspended', updated_at = ? WHERE id = ?"

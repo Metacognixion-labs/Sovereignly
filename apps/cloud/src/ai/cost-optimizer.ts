@@ -24,14 +24,16 @@ export interface CostInsight {
 export class CostOptimizer {
   private insights: CostInsight[] = [];
   private maxHistory = 200;
-  private interval: ReturnType<typeof setInterval>;
+  private interval: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private nodeRegistry: NodeRegistry,
     private stateRegistry: StateRegistry,
+    opts?: { enabled?: boolean },
   ) {
-    // Analyze every 5 minutes
-    this.interval = setInterval(() => this.analyze(), 300_000);
+    if (opts?.enabled !== false) {
+      this.interval = setInterval(() => this.analyze(), 300_000);
+    }
   }
 
   /** Run cost analysis */
@@ -116,5 +118,5 @@ export class CostOptimizer {
     };
   }
 
-  close() { clearInterval(this.interval); }
+  close() { if (this.interval) clearInterval(this.interval); }
 }

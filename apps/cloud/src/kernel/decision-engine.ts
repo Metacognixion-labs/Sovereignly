@@ -29,9 +29,10 @@ export class DecisionEngine {
     private policy:  PolicyEngine,
     private health:  HealthAnalyzer,
     private state:   StateRegistry,
+    opts?: { intervalMs?: number },
   ) {
-    // Evaluate every 60s
-    this.interval = setInterval(() => this.evaluate(), 60_000);
+    // Evaluate periodically (default 60s, configurable for single-node)
+    this.interval = setInterval(() => this.evaluate(), opts?.intervalMs ?? 60_000);
   }
 
   evaluate(): Decision[] {

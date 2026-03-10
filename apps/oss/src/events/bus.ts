@@ -58,9 +58,15 @@ interface Subscription {
 
 export class EventBus {
   private subs: Subscription[] = [];
-  private history: SovereignEvent[] = [];
+  private history: SovereignEvent[];
   private maxHistory = 10_000;
+  private historyIdx = 0;
+  private historyFull = false;
   private emitCount = 0;
+
+  constructor() {
+    this.history = new Array(this.maxHistory);
+  }
 
   // Subscribe to events. Pattern: exact type, or "*" for all.
   on(pattern: string, handler: EventSubscriber, source = "unknown"): string {
@@ -98,11 +104,10 @@ export class EventBus {
       _sealed:  true,
     };
 
-    // Store in history ring buffer
-    this.history.push(event);
-    if (this.history.length > this.maxHistory) {
-      this.history = this.history.slice(-this.maxHistory);
-    }
+    // Store in circular buffer (no array reallocation)
+    this.history[this.historyIdx] = event;
+    this.historyIdx = (this.historyIdx + 1) % this.maxHistory;
+    if (!this.historyFull && this.historyIdx === 0) this.historyFull = true;
     this.emitCount++;
 
     // Dispatch to matching subscribers
@@ -127,6 +132,15 @@ export class EventBus {
     return event;
   }
 
+  // Materialize circular buffer into ordered array
+  private orderedHistory(): SovereignEvent[] {
+    if (!this.historyFull) return this.history.slice(0, this.historyIdx).filter(Boolean);
+    return [
+      ...this.history.slice(this.historyIdx),
+      ...this.history.slice(0, this.historyIdx),
+    ].filter(Boolean);
+  }
+
   // Query recent events (from in-memory history)
   query(opts: {
     type?:     string;
@@ -134,7 +148,7 @@ export class EventBus {
     since?:    number;
     limit?:    number;
   } = {}): SovereignEvent[] {
-    let results = this.history;
+    let results = this.orderedHistory();
     if (opts.type)     results = results.filter(e => e.type === opts.type);
     if (opts.tenantId) results = results.filter(e => e.tenantId === opts.tenantId);
     if (opts.since)    results = results.filter(e => e.ts >= opts.since);
@@ -143,9 +157,10 @@ export class EventBus {
 
   // Stats
   stats() {
+    const size = this.historyFull ? this.maxHistory : this.historyIdx;
     return {
       subscribers: this.subs.length,
-      historySize: this.history.length,
+      historySize: size,
       totalEmitted: this.emitCount,
       subscriberDetails: this.subs.map(s => ({
         id: s.id, pattern: s.pattern, source: s.source,
@@ -156,7 +171,9 @@ export class EventBus {
   // Cleanup
   close() {
     this.subs = [];
-    this.history = [];
+    this.history = new Array(this.maxHistory);
+    this.historyIdx = 0;
+    this.historyFull = false;
   }
 }
 

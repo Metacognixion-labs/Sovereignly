@@ -41,26 +41,249 @@ export function registerPublicRoutes(
     }
   });
 
-  //  Dashboard SPA 
-  app.get("/_sovereign/dashboard", async (c) => {
-    try {
-      const html = await Bun.file("dashboard/index.html").text();
-      return c.html(html);
-    } catch {
-      return c.json({ error: "Dashboard not found. Ensure dashboard/index.html is in the container." }, 404);
+  //  Dashboard SPA (requires auth — JWT or admin token)
+  const serveDashboard = async (c: any) => {
+    // Check JWT token via cookie or query param (set by signin/signup JS)
+    const bearer = c.req.header("authorization")?.slice(7)
+      ?? c.req.query("token");
+    if (bearer) {
+      const { valid } = await verifyJWT(bearer, opts.jwtSecret);
+      if (valid) {
+        try {
+          const html = await Bun.file("dashboard/index.html").text();
+          return c.html(html);
+        } catch {
+          return c.json({ error: "Dashboard not found." }, 404);
+        }
+      }
     }
-  });
-  // SPA catch-all for dashboard sub-routes
-  app.get("/_sovereign/dashboard/*", async (c) => {
-    try {
-      const html = await Bun.file("dashboard/index.html").text();
-      return c.html(html);
-    } catch {
-      return c.redirect("/_sovereign/dashboard");
+    // Check admin token
+    const xtoken = c.req.header("x-sovereign-token")?.replace("Bearer ", "");
+    if (xtoken && opts.adminToken && timingSafeEqual(xtoken, opts.adminToken)) {
+      try {
+        const html = await Bun.file("dashboard/index.html").text();
+        return c.html(html);
+      } catch {
+        return c.json({ error: "Dashboard not found." }, 404);
+      }
     }
+    // No auth — serve a client-side auth gate that checks localStorage
+    return c.html(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Sovereignly Dashboard</title>
+<script>
+var t=localStorage.getItem('sovereign_token');
+if(t){location.replace('/_sovereign/dashboard?token='+encodeURIComponent(t));}
+else{location.replace('/_sovereign/signin?next=dashboard');}
+</script>
+</head><body></body></html>`);
+  };
+  app.get("/_sovereign/dashboard", serveDashboard);
+  app.get("/_sovereign/dashboard/*", serveDashboard);
+
+  //  Sign-in page (GET) + API (POST)
+  app.get("/_sovereign/signin", (c) => {
+    const next = c.req.query("next") ?? "dashboard";
+    return c.html(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In — Sovereignly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg-void:#080f1e;--bg-card:#101d35;--bg-raised:#14233f;--bg-border:#1c334f;
+--blue:#2B7FFF;--blue-bright:#4f97ff;--green:#5DB84A;
+--t-primary:#f0f2f5;--t-secondary:#8fa3bf;--t-muted:#556b8a;
+--f-display:'Syne',sans-serif;--f-body:'DM Sans',sans-serif;--f-mono:'JetBrains Mono',monospace;
+--radius:8px;--radius-lg:12px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg-void);color:var(--t-primary);font-family:var(--f-body);
+min-height:100vh;display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased}
+.card{background:var(--bg-card);border:1px solid var(--bg-border);border-radius:var(--radius-lg);
+padding:40px;width:100%;max-width:440px;margin:20px}
+.back{display:inline-block;margin-bottom:20px;color:var(--t-muted);text-decoration:none;font-size:14px}
+.back:hover{color:var(--t-secondary)}
+h1{font-family:var(--f-display);font-size:24px;font-weight:700;margin-bottom:6px}
+.sub{color:var(--t-secondary);font-size:14px;margin-bottom:28px}
+label{display:block;font-size:13px;font-weight:500;color:var(--t-secondary);margin-bottom:6px}
+input{width:100%;padding:12px 14px;background:var(--bg-raised);border:1px solid var(--bg-border);
+border-radius:var(--radius);color:var(--t-primary);font-family:var(--f-body);font-size:15px;
+outline:none;transition:border-color .2s;margin-bottom:18px}
+input:focus{border-color:var(--blue)}
+input::placeholder{color:var(--t-muted)}
+button{width:100%;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);
+font-family:var(--f-display);font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
+button:hover{background:var(--blue-bright)}
+button:disabled{opacity:.6;cursor:not-allowed}
+.msg{margin-top:16px;padding:14px;border-radius:var(--radius);font-size:14px;font-family:var(--f-mono);
+line-height:1.6;display:none}
+.msg.err{display:block;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ff6b6b}
+.link{color:var(--blue);text-decoration:none;font-size:14px}
+.link:hover{text-decoration:underline}
+.footer{margin-top:20px;text-align:center;color:var(--t-muted);font-size:13px}
+</style>
+<script>
+// If already signed in, skip to dashboard
+var t=localStorage.getItem('sovereign_token');
+if(t)location.replace('/_sovereign/dashboard');
+</script>
+</head>
+<body>
+<div class="card">
+  <a href="/" class="back">&larr; Back to Sovereignly</a>
+  <h1>Sign in</h1>
+  <p class="sub">Enter the email you used to create your account.</p>
+  <form id="f">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" placeholder="you@company.com" required autocomplete="email">
+    <button type="submit" id="btn">Sign In</button>
+  </form>
+  <div id="msg" class="msg"></div>
+  <div class="footer">No account yet? <a href="/_sovereign/signup" class="link">Create one free</a></div>
+</div>
+<script>
+const f=document.getElementById('f'),msg=document.getElementById('msg'),btn=document.getElementById('btn');
+f.addEventListener('submit',async e=>{
+  e.preventDefault();btn.disabled=true;btn.textContent='Signing in…';
+  msg.className='msg';msg.textContent='';
+  try{
+    const r=await fetch('/_sovereign/signin',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({email:f.email.value})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Sign in failed');
+    localStorage.setItem('sovereign_token',d.token);
+    localStorage.setItem('sovereign_tenant',d.tenant.id);
+    location.href='/_sovereign/dashboard';
+  }catch(err){
+    msg.className='msg err';msg.textContent=err.message;
+    btn.disabled=false;btn.textContent='Sign In';
+  }
+});
+</script>
+</body>
+</html>`);
   });
 
-  //  Public signup (free tier, no auth required) 
+  app.post("/_sovereign/signin", async (c) => {
+    const body = await c.req.json().catch(() => ({})) as any;
+    const { email } = body;
+    if (!email?.trim() || !email.includes("@")) return c.json({ error: "Valid email is required" }, 400);
+
+    const normalized = email.trim().toLowerCase();
+    const tenant = tenants.getTenantByOwner(normalized);
+    if (!tenant) return c.json({ error: "No account found for this email. Sign up first." }, 404);
+
+    const token = await issueJWT(
+      { sub: normalized, tid: tenant.id, role: "owner" },
+      opts.jwtSecret,
+      86400 * 30
+    );
+
+    void chain.emit("AUTH_SUCCESS", {
+      event: "signin", tenantId: tenant.id, email: normalized,
+    }, { severity: "LOW", source: "public-signin" });
+
+    return c.json({
+      ok: true,
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, plan: tenant.plan },
+      token,
+      dashboard: "/_sovereign/dashboard",
+    });
+  });
+
+  //  Signup form (GET  serves HTML form)
+  app.get("/_sovereign/signup", (c) => {
+    return c.html(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign Up — Sovereignly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg-void:#080f1e;--bg-card:#101d35;--bg-raised:#14233f;--bg-border:#1c334f;
+--blue:#2B7FFF;--blue-bright:#4f97ff;--blue-dark:#1660d8;--green:#5DB84A;
+--t-primary:#f0f2f5;--t-secondary:#8fa3bf;--t-muted:#556b8a;
+--f-display:'Syne',sans-serif;--f-body:'DM Sans',sans-serif;--f-mono:'JetBrains Mono',monospace;
+--radius:8px;--radius-lg:12px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg-void);color:var(--t-primary);font-family:var(--f-body);
+min-height:100vh;display:flex;align-items:center;justify-content:center;
+-webkit-font-smoothing:antialiased}
+.card{background:var(--bg-card);border:1px solid var(--bg-border);border-radius:var(--radius-lg);
+padding:40px;width:100%;max-width:440px;margin:20px}
+.back{display:inline-block;margin-bottom:20px;color:var(--t-muted);text-decoration:none;font-size:14px}
+.back:hover{color:var(--t-secondary)}
+h1{font-family:var(--f-display);font-size:24px;font-weight:700;margin-bottom:6px}
+.sub{color:var(--t-secondary);font-size:14px;margin-bottom:28px}
+label{display:block;font-size:13px;font-weight:500;color:var(--t-secondary);margin-bottom:6px}
+input{width:100%;padding:12px 14px;background:var(--bg-raised);border:1px solid var(--bg-border);
+border-radius:var(--radius);color:var(--t-primary);font-family:var(--f-body);font-size:15px;
+outline:none;transition:border-color .2s;margin-bottom:18px}
+input:focus{border-color:var(--blue)}
+input::placeholder{color:var(--t-muted)}
+button{width:100%;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius);
+font-family:var(--f-display);font-size:15px;font-weight:600;cursor:pointer;transition:background .2s}
+button:hover{background:var(--blue-bright)}
+button:disabled{opacity:.6;cursor:not-allowed}
+.msg{margin-top:16px;padding:14px;border-radius:var(--radius);font-size:14px;font-family:var(--f-mono);
+line-height:1.6;display:none}
+.msg.ok{display:block;background:rgba(93,184,74,.1);border:1px solid rgba(93,184,74,.25);color:var(--green)}
+.msg.err{display:block;background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#ff6b6b}
+.success-actions{margin-top:16px;display:flex;gap:10px}
+.success-actions a{display:inline-block;padding:10px 18px;border-radius:var(--radius);font-size:13px;
+font-weight:600;text-decoration:none;font-family:var(--f-display)}
+.btn-dash{background:var(--blue);color:#fff}
+.btn-dash:hover{background:var(--blue-bright)}
+</style>
+</head>
+<body>
+<div class="card">
+  <a href="/" class="back">&larr; Back to Sovereignly</a>
+  <h1>Create your account</h1>
+  <p class="sub">Free tier — 10K events/mo, 3 functions, instant activation.</p>
+  <form id="f">
+    <label for="name">Organization / Project Name</label>
+    <input id="name" name="name" type="text" placeholder="Acme Corp" required autocomplete="organization">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" placeholder="you@company.com" required autocomplete="email">
+    <button type="submit" id="btn">Create Account</button>
+  </form>
+  <div id="msg" class="msg"></div>
+  <div class="footer" style="margin-top:20px;text-align:center;color:#556b8a;font-size:13px">Already have an account? <a href="/_sovereign/signin" style="color:#2B7FFF;text-decoration:none">Sign in</a></div>
+</div>
+<script>
+// If already signed in, skip to dashboard
+var t=localStorage.getItem('sovereign_token');
+if(t)location.replace('/_sovereign/dashboard');
+
+const f=document.getElementById('f'),msg=document.getElementById('msg'),btn=document.getElementById('btn');
+f.addEventListener('submit',async e=>{
+  e.preventDefault();btn.disabled=true;btn.textContent='Creating…';
+  msg.className='msg';msg.textContent='';
+  try{
+    const r=await fetch('/_sovereign/signup',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({name:f.name.value,email:f.email.value})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Signup failed');
+    localStorage.setItem('sovereign_token',d.token);
+    localStorage.setItem('sovereign_tenant',d.tenant.id);
+    location.href='/_sovereign/dashboard';
+  }catch(err){
+    msg.className='msg err';msg.textContent=err.message;
+    btn.disabled=false;btn.textContent='Create Account';
+  }
+});
+</script>
+</body>
+</html>`);
+  });
+
+  //  Public signup (free tier, no auth required)
   //
   // This is the core of self-service: anyone can create a free tenant and
   // get a JWT back immediately. No Stripe, no OAuth  just name + email.

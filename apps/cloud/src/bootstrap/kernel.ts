@@ -31,15 +31,19 @@ export function createKernel(cfg: Config, chain: SovereignChain) {
   const agentRuntime   = new AgentRuntime(eventBus, policyEngine, workflowEngine);
   registerBuiltinAgents(agentRuntime);
 
+  // Slow down kernel intervals on single-node to reduce GC pressure
+  const singleNode = cfg.clusterPeers.length === 0;
+  const kernelInterval = singleNode ? 120_000 : undefined;  // 2 min vs default
+
   const stateRegistry   = new StateRegistry(eventBus);
-  const healthAnalyzer  = new HealthAnalyzer(eventBus, stateRegistry, workflowEngine);
-  const decisionEngine  = new DecisionEngine(eventBus, policyEngine, healthAnalyzer, stateRegistry);
+  const healthAnalyzer  = new HealthAnalyzer(eventBus, stateRegistry, workflowEngine, { intervalMs: kernelInterval });
+  const decisionEngine  = new DecisionEngine(eventBus, policyEngine, healthAnalyzer, stateRegistry, { intervalMs: kernelInterval });
   const placementEngine = new PlacementEngine(stateRegistry, policyEngine);
   const migrationEngine = new MigrationEngine(eventBus, stateRegistry, workflowEngine, placementEngine);
   const topologyEngine  = new TopologyEngine(stateRegistry);
 
   const aiOS           = new AIOperatingSystem(eventBus, workflowEngine, policyEngine);
-  const cognitiveModel = new CognitiveModel(eventBus, stateRegistry);
+  const cognitiveModel = new CognitiveModel(eventBus, stateRegistry, { intervalMs: singleNode ? 300_000 : undefined });
 
   // Modular Kernel
   const sovereignKernel = new SovereignKernel({

@@ -216,6 +216,7 @@ pointer-events:none;z-index:0}
     <div id="node-id" style="font-family:var(--mono);font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid var(--border);border-radius:4px">⬤ primary</div>
     <div class="status-pill"><span class="status-dot"></span><span id="status-text">CONNECTING</span></div>
     <button class="btn btn-primary" onclick="openDeploy()">+ Deploy</button>
+    <button class="btn" onclick="signOut()" style="margin-left:4px;color:var(--muted)">Sign Out</button>
   </div>
 </header>
 
@@ -503,8 +504,8 @@ pointer-events:none;z-index:0}
     <div class="panel-hd"><div class="panel-title">Connection</div></div>
     <div class="panel-body">
       <div class="form-grid" style="max-width:480px">
-        <div class="fg full"><label class="flabel">Sovereignly URL</label>
-          <input class="finput" id="cfg-url" value="http://localhost:8787"></div>
+        <div class="fg full"><label class="flabel">Sovereignly URL (leave blank for auto-detect)</label>
+          <input class="finput" id="cfg-url" value="" placeholder="https://sovereignly.fly.dev or blank for auto"></div>
         <div class="fg full"><label class="flabel">Admin Token (optional)</label>
           <input class="finput" id="cfg-token" type="password" placeholder="sk-sovereign-…"></div>
       </div>
@@ -569,19 +570,23 @@ pointer-events:none;z-index:0}
 <div class="toasts" id="toasts"></div>
 
 <script>
-let URL_BASE = localStorage.getItem('sc_url') || 'http://localhost:8787';
+// Auto-detect base URL: use relative paths in production, localhost in dev
+let URL_BASE = localStorage.getItem('sc_url') || (location.hostname === 'localhost' ? 'http://localhost:8787' : '');
+// Support both admin token (sc_token) and JWT from signup (sovereign_token)
 let TOKEN = localStorage.getItem('sc_token') || '';
+let JWT_TOKEN = localStorage.getItem('sovereign_token') || '';
 let following = true;
 let logs = [];
 
 document.getElementById('cfg-url').value = URL_BASE;
-document.getElementById('server-url-lbl').textContent = URL_BASE;
+document.getElementById('server-url-lbl').textContent = URL_BASE || location.origin;
 
 // ── API ────────────────────────────────────────────────────
 async function api(path, opts = {}) {
   try {
     const headers = { 'content-type': 'application/json' };
     if (TOKEN) headers['x-sovereign-token'] = TOKEN;
+    if (JWT_TOKEN) headers['authorization'] = 'Bearer ' + JWT_TOKEN;
     if (opts.headers) Object.assign(headers, opts.headers);
     const r = await fetch(URL_BASE + path, { ...opts, headers, signal: AbortSignal.timeout(5000) });
     return { ok: r.ok, status: r.status, data: await r.json().catch(() => null) };
@@ -786,6 +791,14 @@ function toast(msg, type='in') {
 }
 
 function fmt(n) { return n >= 1_000_000 ? (n/1_000_000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n); }
+
+function signOut() {
+  localStorage.removeItem('sovereign_token');
+  localStorage.removeItem('sovereign_tenant');
+  localStorage.removeItem('sc_token');
+  localStorage.removeItem('sc_url');
+  location.href = '/';
+}
 
 // ── Init ───────────────────────────────────────────────────
 document.getElementById('deploy-overlay').addEventListener('click', e => { if(e.target===e.currentTarget) closeDeploy(); });

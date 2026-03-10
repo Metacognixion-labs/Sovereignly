@@ -27,14 +27,16 @@ const IMBALANCE_THRESHOLD = 0.4;  // max difference between nodes before rebalan
 export class ClusterBalancer {
   private recommendations: BalanceRecommendation[] = [];
   private maxHistory = 200;
-  private interval: ReturnType<typeof setInterval>;
+  private interval: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private bus: EventBus,
     private nodeRegistry: NodeRegistry,
+    opts?: { enabled?: boolean },
   ) {
-    // Evaluate every 60 seconds
-    this.interval = setInterval(() => this.evaluate(), 60_000);
+    if (opts?.enabled !== false) {
+      this.interval = setInterval(() => this.evaluate(), 60_000);
+    }
   }
 
   /** Evaluate cluster balance and generate recommendations */
@@ -123,5 +125,5 @@ export class ClusterBalancer {
     };
   }
 
-  close() { clearInterval(this.interval); }
+  close() { if (this.interval) clearInterval(this.interval); }
 }

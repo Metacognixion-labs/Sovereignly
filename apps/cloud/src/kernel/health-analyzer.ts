@@ -27,12 +27,13 @@ export class HealthAnalyzer {
     private bus:      EventBus,
     private state:    StateRegistry,
     private workflow: WorkflowEngine,
+    opts?: { intervalMs?: number },
   ) {
     // Listen to anomalies and failures
     this.subId = bus.on("*", (e) => this.ingest(e), "health-analyzer");
 
-    // Periodic health sweep every 30s
-    this.checkInterval = setInterval(() => this.sweep(), 30_000);
+    // Periodic health sweep (default 30s, configurable for single-node)
+    this.checkInterval = setInterval(() => this.sweep(), opts?.intervalMs ?? 30_000);
   }
 
   private ingest(event: SovereignEvent) {
