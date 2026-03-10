@@ -24,7 +24,7 @@ RUN mkdir -p /data/platform /data/global /data/tenants && chown -R sovereign:sov
 COPY --from=builder --chown=sovereign:sovereign /app .
 COPY --chown=sovereign:sovereign deploy/litestream.yml /etc/litestream.yml
 COPY --chown=sovereign:sovereign deploy/entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 USER sovereign
 EXPOSE 8787
 HEALTHCHECK --interval=10s --timeout=3s --start-period=8s --retries=3 \
