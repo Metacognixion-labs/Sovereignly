@@ -9,7 +9,7 @@
 
 set -e
 
-if [ -n "$LITESTREAM_BUCKET" ] && [ -n "$LITESTREAM_ACCESS_KEY_ID" ]; then
+if [ -n "$LITESTREAM_BUCKET" ] && { [ -n "$LITESTREAM_ACCESS_KEY_ID" ] || [ -n "$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI" ]; }; then
   echo "[entrypoint] Litestream backup enabled → $LITESTREAM_BUCKET"
 
   # Restore databases if they don't exist yet (fresh machine / volume wipe)

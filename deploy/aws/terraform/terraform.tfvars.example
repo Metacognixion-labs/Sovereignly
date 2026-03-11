@@ -1,0 +1,43 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Sovereignly — Terraform Variables
+#
+# Copy to terraform.tfvars and customize:
+#   cp terraform.tfvars.example terraform.tfvars
+# ─────────────────────────────────────────────────────────────────────────────
+
+aws_region  = "us-east-1"
+environment = "prod"
+
+# Domain (leave empty to use ALB/CloudFront default DNS)
+domain_name = ""
+
+# ── Compute ───────────────────────────────────────────────────────────────────
+# 512 CPU + 1024 MB = ~$15/mo (ARM64 Graviton pricing)
+# Scale up: 1024 CPU + 2048 MB = ~$30/mo
+cpu    = 512
+memory = 1024
+
+desired_count       = 1
+min_capacity        = 1
+max_capacity        = 4
+enable_fargate_spot = false # Set true for staging (~70% cheaper, may interrupt)
+
+# ── Monitoring ────────────────────────────────────────────────────────────────
+alarm_email        = ""
+log_retention_days = 30
+
+# ── Application Environment ──────────────────────────────────────────────────
+app_env_vars = {
+  NODE_ENV         = "production"
+  WORKER_POOL_SIZE = "2"
+  LOG_LEVEL        = "minimal"
+  ANCHOR_TIER      = "starter"
+  NODE_ROLE        = "cluster"
+  CLUSTER_ID       = "us-east"
+  NODE_REGION      = "us-east"
+}
+
+# ── Secrets (set via CLI, not here) ──────────────────────────────────────────
+# aws secretsmanager put-secret-value \
+#   --secret-id sovereignly/prod/app \
+#   --secret-string '{"SOVEREIGN_SERVER_KEY":"...","JWT_SECRET":"...","ADMIN_TOKEN":"..."}'
