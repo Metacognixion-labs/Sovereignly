@@ -6,11 +6,13 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Blocks, Link2, ShieldCheck, ScrollText,
   Database, Settings, Activity, Coins, Cpu, Globe,
-  Search, ChevronRight, Atom,
+  Search, ChevronRight, Atom, Plus, FolderGit2,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
 const NAV = [
+  { section: "Projects" },
+  { label: "New Project",  href: "/projects/new", icon: Plus },
   { section: "Overview" },
   { label: "Dashboard",   href: "/overview",   icon: LayoutDashboard },
   { label: "Functions",   href: "/functions",  icon: Blocks },
