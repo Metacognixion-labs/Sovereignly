@@ -197,33 +197,98 @@ pointer-events:none;z-index:0}
 .gate-pill.on{background:var(--green2);color:var(--green);border:1px solid rgba(0,255,170,.15)}
 .gate-pill.off{background:rgba(255,59,85,.05);color:var(--muted);border:1px solid var(--border)}
 
+/* ── Skeleton Loading ── */
+.skeleton{background:linear-gradient(90deg,var(--dim) 25%,var(--border) 50%,var(--dim) 75%);
+  background-size:200% 100%;animation:shimmer 1.5s ease-in-out infinite;border-radius:4px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.stat-val.loading{width:60px;height:34px;display:inline-block}
+.stat-unit.loading{width:50px;height:12px;display:inline-block;margin-top:6px}
+
+/* ── Command Palette ── */
+.cmd-overlay{display:none;position:fixed;inset:0;background:rgba(0,3,8,.75);backdrop-filter:blur(8px);
+  z-index:500;align-items:flex-start;justify-content:center;padding-top:min(20vh,160px)}
+.cmd-overlay.open{display:flex}
+.cmd-box{width:min(560px,92vw);background:var(--panel);border:1px solid var(--border2);border-radius:12px;
+  box-shadow:0 20px 60px rgba(0,0,0,.8);animation:mIn .12s ease;overflow:hidden}
+.cmd-input{width:100%;padding:16px 20px;background:transparent;border:none;border-bottom:1px solid var(--border);
+  font-family:var(--mono);font-size:14px;color:var(--text);outline:none}
+.cmd-input::placeholder{color:var(--muted)}
+.cmd-results{max-height:320px;overflow-y:auto;padding:6px}
+.cmd-item{padding:10px 16px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:12px;
+  font-size:13px;color:var(--text);transition:background .08s}
+.cmd-item:hover,.cmd-item.selected{background:var(--cyan2);color:var(--cyan)}
+.cmd-item-icon{width:20px;text-align:center;color:var(--muted);font-size:14px}
+.cmd-item-label{flex:1}
+.cmd-item-hint{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.cmd-kbd{font-family:var(--mono);font-size:9px;background:var(--dim);color:var(--muted);
+  padding:2px 6px;border-radius:3px;border:1px solid var(--border)}
+
+/* ── Sparkline ── */
+.sparkline-canvas{display:block;margin-top:6px;opacity:.7}
+
+/* ── Connection Status ── */
+.conn-status{font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:3px;display:flex;align-items:center;gap:4px}
+.conn-status.connected{background:var(--green2);color:var(--green);border:1px solid rgba(0,255,170,.15)}
+.conn-status.reconnecting{background:var(--amber2);color:var(--amber);border:1px solid rgba(255,204,0,.15);animation:pulse 1s infinite}
+.conn-status.offline{background:var(--red2);color:var(--red);border:1px solid rgba(255,59,85,.15)}
+
+/* ── Animated Counter ── */
+.counter-animate{transition:none}
+
+/* ── Accessibility: Focus visible ── */
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:4px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+
+/* ── Compliance view ── */
+.score-gauge{width:120px;height:120px;position:relative;display:inline-block}
+.score-gauge svg{transform:rotate(-90deg)}
+.score-gauge .value{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--display);font-size:32px;font-weight:700}
+.ctrl-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.ctrl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.ctrl-dot.pass{background:var(--green);box-shadow:0 0 6px var(--green)}
+.ctrl-dot.fail{background:var(--red);box-shadow:0 0 6px var(--red)}
+.ctrl-dot.warn{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+
 @media(max-width:768px){
   .app{grid-template-columns:1fr}
   .sidebar{display:none}
   .stat-grid{grid-template-columns:1fr 1fr}
+  .cmd-overlay{padding-top:20px}
 }
 </style>
 </head>
 <body>
+<a href="#main-content" class="sr-only" style="position:absolute;top:-40px;left:0;background:var(--cyan);color:#000;padding:8px 16px;z-index:1000;focus:top:0">Skip to content</a>
 <div class="app">
 
+<!-- Command Palette -->
+<div class="cmd-overlay" id="cmd-palette" role="dialog" aria-modal="true" aria-label="Command palette">
+  <div class="cmd-box">
+    <input class="cmd-input" id="cmd-input" type="text" placeholder="Type a command... (navigate, deploy, search)" autocomplete="off" aria-label="Search commands">
+    <div class="cmd-results" id="cmd-results" role="listbox"></div>
+  </div>
+</div>
+
 <!-- Topbar -->
-<header class="topbar">
-  <div class="logo"><span class="logo-hex">⬡</span> SOVEREIGNCLOUD</div>
-  <div class="version-chip">v3.0</div>
-  <div class="bun-badge"><span class="bun-dot"></span>BUN RUNTIME</div>
+<header class="topbar" role="banner">
+  <div class="logo"><span class="logo-hex" aria-hidden="true">⬡</span> SOVEREIGNCLOUD</div>
+  <div class="version-chip">v4.0</div>
+  <div class="bun-badge"><span class="bun-dot" aria-hidden="true"></span>BUN RUNTIME</div>
   <div class="tr">
+    <div id="conn-indicator" class="conn-status connected" aria-live="polite"><span aria-hidden="true">●</span> SSE Connected</div>
     <div id="node-id" style="font-family:var(--mono);font-size:10px;color:var(--muted);padding:3px 8px;border:1px solid var(--border);border-radius:4px">⬤ primary</div>
-    <div class="status-pill"><span class="status-dot"></span><span id="status-text">CONNECTING</span></div>
-    <button class="btn btn-primary" onclick="openDeploy()">+ Deploy</button>
-    <button class="btn" onclick="signOut()" style="margin-left:4px;color:var(--muted)">Sign Out</button>
+    <div class="status-pill" role="status"><span class="status-dot" aria-hidden="true"></span><span id="status-text">CONNECTING</span></div>
+    <button class="btn" onclick="openCmdPalette()" aria-label="Open command palette" title="Cmd+K"><span class="cmd-kbd">⌘K</span></button>
+    <button class="btn btn-primary" onclick="openDeploy()" aria-label="Deploy new function">+ Deploy</button>
+    <button class="btn" onclick="signOut()" style="margin-left:4px;color:var(--muted)" aria-label="Sign out">Sign Out</button>
   </div>
 </header>
 
 <!-- Sidebar -->
-<nav class="sidebar">
-  <div class="nav-sec">Overview</div>
-  <div class="nav-item active" onclick="show('dashboard',this)"><span class="nav-icon">◈</span> Dashboard</div>
+<nav class="sidebar" role="navigation" aria-label="Main navigation">
+  <div class="nav-sec" aria-hidden="true">Overview</div>
+  <div class="nav-item active" onclick="show('dashboard',this)" role="button" tabindex="0" aria-current="page"><span class="nav-icon" aria-hidden="true">◈</span> Dashboard</div>
   <div class="nav-item" onclick="show('functions',this)"><span class="nav-icon">λ</span> Functions <span class="nav-badge g" id="fn-badge">0</span></div>
   <div class="nav-sec">Storage</div>
   <div class="nav-item" onclick="show('kv',this)"><span class="nav-icon">◻</span> KV Store</div>
@@ -239,7 +304,7 @@ pointer-events:none;z-index:0}
 </nav>
 
 <!-- Main -->
-<main class="main">
+<main class="main" id="main-content" role="main">
 
 <!-- DASHBOARD -->
 <div class="view active" id="view-dashboard">
@@ -567,7 +632,7 @@ pointer-events:none;z-index:0}
   </div>
 </div>
 
-<div class="toasts" id="toasts"></div>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
 <script>
 // HTML entity escaping to prevent XSS from server data
@@ -932,15 +997,257 @@ async function awardTokens() {
   }
 }
 
+// ── SSE Real-Time Connection ──────────────────────────────
+let sseSource = null;
+function connectSSE() {
+  const connEl = document.getElementById('conn-indicator');
+  if (!URL_BASE) return;
+  try {
+    sseSource = new EventSource(URL_BASE + '/_sovereign/chain/stream');
+    sseSource.onopen = () => {
+      connEl.className = 'conn-status connected';
+      connEl.innerHTML = '<span aria-hidden="true">●</span> Live';
+    };
+    sseSource.addEventListener('block', (e) => {
+      const block = JSON.parse(e.data);
+      addLog('info', `[Chain] Block #${block.index} sealed — ${block.eventCount} events`);
+    });
+    sseSource.addEventListener('audit', (e) => {
+      const ev = JSON.parse(e.data);
+      const lvl = ev.severity === 'HIGH' || ev.severity === 'CRITICAL' ? 'error' : 'info';
+      addLog(lvl, `[Audit] ${ev.type} (${ev.severity})`);
+    });
+    sseSource.onerror = () => {
+      connEl.className = 'conn-status reconnecting';
+      connEl.innerHTML = '<span aria-hidden="true">◌</span> Reconnecting…';
+    };
+  } catch {
+    connEl.className = 'conn-status offline';
+    connEl.innerHTML = '<span aria-hidden="true">○</span> Offline';
+  }
+}
+
+// ── Command Palette (Cmd+K) ──────────────────────────────
+const CMD_ACTIONS = [
+  { icon: '◈', label: 'Dashboard', hint: '', action: () => show('dashboard') },
+  { icon: 'λ', label: 'Functions', hint: '', action: () => show('functions') },
+  { icon: '◻', label: 'KV Store', hint: '', action: () => show('kv') },
+  { icon: '⬡', label: 'Objects', hint: '', action: () => show('storage') },
+  { icon: '≡', label: 'Logs', hint: '', action: () => show('logs') },
+  { icon: '▲', label: 'Performance', hint: '', action: () => show('perf') },
+  { icon: '◆', label: 'Token System', hint: '', action: () => show('tokens') },
+  { icon: '⚙', label: 'Settings', hint: '', action: () => show('settings') },
+  { icon: '+', label: 'Deploy Function', hint: 'Ctrl+D', action: () => openDeploy() },
+  { icon: '↻', label: 'Refresh Data', hint: 'R', action: () => refresh() },
+  { icon: '✗', label: 'Sign Out', hint: '', action: () => signOut() },
+];
+let cmdSelectedIdx = 0;
+
+function openCmdPalette() {
+  const overlay = document.getElementById('cmd-palette');
+  overlay.classList.add('open');
+  const input = document.getElementById('cmd-input');
+  input.value = '';
+  input.focus();
+  renderCmdResults('');
+  cmdSelectedIdx = 0;
+}
+
+function closeCmdPalette() {
+  document.getElementById('cmd-palette').classList.remove('open');
+}
+
+function renderCmdResults(query) {
+  const q = query.toLowerCase();
+  const filtered = CMD_ACTIONS.filter(a => a.label.toLowerCase().includes(q));
+  const container = document.getElementById('cmd-results');
+  container.innerHTML = filtered.map((a, i) =>
+    `<div class="cmd-item${i === cmdSelectedIdx ? ' selected' : ''}" data-idx="${i}" onclick="executeCmdAction(${CMD_ACTIONS.indexOf(a)})" role="option">
+      <span class="cmd-item-icon" aria-hidden="true">${esc(a.icon)}</span>
+      <span class="cmd-item-label">${esc(a.label)}</span>
+      ${a.hint ? `<span class="cmd-item-hint">${esc(a.hint)}</span>` : ''}
+    </div>`
+  ).join('') || '<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">No results</div>';
+}
+
+function executeCmdAction(idx) {
+  CMD_ACTIONS[idx]?.action();
+  closeCmdPalette();
+}
+
+document.getElementById('cmd-input').addEventListener('input', (e) => {
+  cmdSelectedIdx = 0;
+  renderCmdResults(e.target.value);
+});
+
+document.getElementById('cmd-input').addEventListener('keydown', (e) => {
+  const items = document.querySelectorAll('.cmd-item');
+  if (e.key === 'ArrowDown') { e.preventDefault(); cmdSelectedIdx = Math.min(cmdSelectedIdx + 1, items.length - 1); renderCmdResults(e.target.value); }
+  if (e.key === 'ArrowUp') { e.preventDefault(); cmdSelectedIdx = Math.max(cmdSelectedIdx - 1, 0); renderCmdResults(e.target.value); }
+  if (e.key === 'Enter') { e.preventDefault(); items[cmdSelectedIdx]?.click(); }
+  if (e.key === 'Escape') closeCmdPalette();
+});
+
+document.getElementById('cmd-palette').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeCmdPalette(); });
+
+// Global keyboard shortcut: Cmd+K or Ctrl+K
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openCmdPalette(); }
+  if (e.key === 'Escape' && document.getElementById('cmd-palette').classList.contains('open')) closeCmdPalette();
+});
+
+// ── Animated Number Counter ──────────────────────────────
+function animateValue(el, start, end, durationMs = 600) {
+  if (start === end) { el.textContent = typeof end === 'number' ? end.toFixed?.(1) ?? end : end; return; }
+  const startTime = performance.now();
+  const isFloat = String(end).includes('.');
+  function tick(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / durationMs, 1);
+    const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+    const current = start + (end - start) * eased;
+    el.textContent = isFloat ? current.toFixed(1) : fmt(Math.round(current));
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// Store previous values for animation
+const prevValues = {};
+const origRefresh = refresh;
+refresh = async function() {
+  const { ok, data } = await api('/_sovereign/metrics');
+  if (!ok || !data) {
+    document.getElementById('status-text').textContent = 'OFFLINE';
+    return;
+  }
+  document.getElementById('status-text').textContent = 'ONLINE';
+
+  // Animated counters
+  const metrics = {
+    's-fns': data.functions ?? 0,
+    's-req': data.requests ?? 0,
+    's-rps': parseFloat((data.rps ?? 0).toFixed(1)),
+    's-err': parseFloat(((data.errorRate ?? 0) * 100).toFixed(1)),
+    's-up': parseFloat(((data.uptime ?? 0) / 3600).toFixed(1)),
+    's-workers': (data.workers ?? {}).total ?? 0,
+  };
+
+  for (const [id, val] of Object.entries(metrics)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const prev = prevValues[id] ?? val;
+    animateValue(el, prev, val);
+    prevValues[id] = val;
+  }
+
+  document.getElementById('fn-badge').textContent = data.functions ?? 0;
+  document.getElementById('err-badge').textContent = data.errors ?? 0;
+
+  const ws = data.workers ?? {};
+  document.getElementById('worker-stats-txt').textContent =
+    `${ws.busy ?? 0}/${ws.total ?? 0} busy · ${ws.queued ?? 0} queued · ${ws.totalTasks ?? 0} total tasks`;
+
+  // Worker dots
+  const dotsEl = document.getElementById('worker-dots');
+  dotsEl.innerHTML = '';
+  for (let i = 0; i < (ws.total ?? 0); i++) {
+    const d = document.createElement('div');
+    d.className = 'wdot' + (i < (ws.busy ?? 0) ? ' busy' : '');
+    dotsEl.appendChild(d);
+  }
+
+  // Runtime info
+  document.getElementById('runtime-info').innerHTML = `
+    <div><span style="color:var(--cyan)">Runtime:</span>  Bun ${esc(data.bunVersion ?? '?')}</div>
+    <div><span style="color:var(--cyan)">Node ID:</span>  ${esc(data.node ?? '?')}</div>
+    <div><span style="color:var(--cyan)">Cache:</span>    ${esc(data.cache?.size ?? 0)} entries</div>
+    <div><span style="color:var(--cyan)">KV Namespaces:</span> ${esc((data.kv ?? []).length)}</div>
+  `;
+
+  // Sparklines
+  drawSparklines(data);
+
+  loadEndpoints();
+  updatePerf(data);
+};
+
+// ── Sparklines (Canvas-based, zero deps) ──────────────────
+const sparkData = { rps: [], errors: [], workers: [] };
+const MAX_SPARK = 30; // 30 data points (~4 min at 8s interval)
+
+function drawSparklines(data) {
+  sparkData.rps.push(data.rps ?? 0);
+  sparkData.errors.push((data.errorRate ?? 0) * 100);
+  sparkData.workers.push((data.workers?.busy ?? 0) / Math.max(data.workers?.total ?? 1, 1) * 100);
+
+  if (sparkData.rps.length > MAX_SPARK) { sparkData.rps.shift(); sparkData.errors.shift(); sparkData.workers.shift(); }
+
+  drawSparkline('s-rps', sparkData.rps, '#00d4ff');
+  drawSparkline('s-err', sparkData.errors, '#ff3b55');
+  drawSparkline('s-workers', sparkData.workers, '#a855f7');
+}
+
+function drawSparkline(parentId, data, color) {
+  const parent = document.getElementById(parentId)?.closest('.stat');
+  if (!parent || data.length < 2) return;
+
+  let canvas = parent.querySelector('.sparkline-canvas');
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.className = 'sparkline-canvas';
+    canvas.width = 140;
+    canvas.height = 24;
+    canvas.setAttribute('aria-hidden', 'true');
+    parent.appendChild(canvas);
+  }
+
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const max = Math.max(...data, 1);
+  const step = w / (data.length - 1);
+
+  // Fill
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  data.forEach((v, i) => ctx.lineTo(i * step, h - (v / max) * h * 0.85));
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  ctx.fillStyle = color + '15';
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = i * step, y = h - (v / max) * h * 0.85;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+// ── Keyboard Navigation for Nav Items ──────────────────────
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); item.click(); }
+  });
+});
+
+// ── Init ───────────────────────────────────────────────────
+document.getElementById('deploy-overlay').addEventListener('click', e => { if(e.target===e.currentTarget) closeDeploy(); });
+
+addLog('info', '[Sovereign] Dashboard v4 initialized');
+addLog('info', '[Runtime] Bun + Hono gateway');
+addLog('info', '[KV] SQLite (bun:sqlite) ready');
+addLog('info', '[Storage] Object store ready');
+addLog('info', '[Workers] Pool pre-warmed');
+
+connectSSE();
 refresh();
 setInterval(refresh, 8000);
-setInterval(() => {
-  if (Math.random() > .65) {
-    const routes = ['/hello', '/echo', '/store/test', '/_sovereign/metrics'];
-    const ms = (Math.random() * 12 + .5).toFixed(1);
-    addLog('info', `[Gateway] GET ${routes[Math.floor(Math.random()*routes.length)]} → 200 ${ms}ms`);
-  }
-}, 2500);
 </script>
 </body>
 </html>
