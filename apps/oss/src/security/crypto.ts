@@ -268,6 +268,95 @@ export class MerkleTree {
   }
 }
 
+// -- Incremental Merkle Tree (frontier-only storage) --------------------------
+// Optimized for append-only audit logs. Stores only one hash per level (the frontier).
+// Insertion is O(log N) with O(log N) storage instead of O(N) for full tree rebuild.
+
+export class IncrementalMerkleTree {
+  private frontier: string[];  // one hash per level (index 0 = leaf level)
+  private depth: number;
+  private count = 0;
+  private zeros: string[];     // pre-computed zero hashes per level
+
+  constructor(maxDepth = 32) {
+    this.depth = maxDepth;
+    this.frontier = new Array(maxDepth).fill("");
+    // Pre-compute zero hashes (empty subtree at each level)
+    this.zeros = new Array(maxDepth);
+    this.zeros[0] = "0".repeat(64);
+    // zeros[i] = sha256(zeros[i-1] + zeros[i-1]) — computed lazily
+  }
+
+  private async zeroAt(level: number): Promise<string> {
+    if (this.zeros[level]) return this.zeros[level];
+    const prev = await this.zeroAt(level - 1);
+    this.zeros[level] = await sha256(prev + prev);
+    return this.zeros[level];
+  }
+
+  /** Insert a leaf hash and return the new root. O(log N) per insertion. */
+  async insert(leafHash: string): Promise<string> {
+    let current = leafHash;
+    let idx = this.count;
+
+    for (let level = 0; level < this.depth; level++) {
+      if (idx % 2 === 0) {
+        // Left child: store in frontier, pair with zero
+        this.frontier[level] = current;
+        current = await sha256(current + await this.zeroAt(level));
+      } else {
+        // Right child: pair with frontier (left sibling)
+        current = await sha256(this.frontier[level] + current);
+      }
+      idx = Math.floor(idx / 2);
+    }
+
+    this.count++;
+    return current;
+  }
+
+  /** Batch insert multiple leaves. Returns final root. */
+  async insertBatch(leafHashes: string[]): Promise<string> {
+    let root = "";
+    for (const leaf of leafHashes) {
+      root = await this.insert(leaf);
+    }
+    return root;
+  }
+
+  /** Get the current root without inserting. */
+  async root(): Promise<string> {
+    if (this.count === 0) return sha256("empty");
+    // Recompute root from frontier
+    let current = this.frontier[0] || await this.zeroAt(0);
+    let idx = this.count - 1;
+    for (let level = 0; level < this.depth; level++) {
+      if (idx % 2 === 0) {
+        current = await sha256(current + await this.zeroAt(level));
+      } else {
+        current = await sha256(this.frontier[level] + current);
+      }
+      idx = Math.floor(idx / 2);
+    }
+    return current;
+  }
+
+  get size(): number { return this.count; }
+
+  /** Export frontier state for persistence */
+  exportState(): { frontier: string[]; count: number; depth: number } {
+    return { frontier: [...this.frontier], count: this.count, depth: this.depth };
+  }
+
+  /** Restore frontier from persisted state */
+  static fromState(state: { frontier: string[]; count: number; depth: number }): IncrementalMerkleTree {
+    const tree = new IncrementalMerkleTree(state.depth);
+    tree.frontier = [...state.frontier];
+    tree.count = state.count;
+    return tree;
+  }
+}
+
 // -- Constant-time string comparison ------------------------------------------
 // Prevents timing attacks on token/secret comparisons.
 

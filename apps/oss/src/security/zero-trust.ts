@@ -20,11 +20,13 @@
  */
 
 import type { Context, Next, MiddlewareHandler } from "hono";
+import { Database } from "bun:sqlite";
+import { join }     from "node:path";
 import { hmac256, hmac256Verify, sha256, timingSafeEqual } from "./crypto.ts";
 import { InputShield }                     from "./input-shield.ts";
 import type { SovereignChain }            from "./chain.ts";
 
-//  RBAC 
+//  RBAC
 
 export type Role = "admin" | "deployer" | "reader" | "auditor" | "owner";
 
@@ -41,19 +43,49 @@ export function can(role: Role, permission: string): boolean {
   return perms.has("*") || perms.has(permission);
 }
 
-// -- Token revocation blacklist --
-const revokedTokens = new Set<string>();
+// -- Persistent token revocation (SQLite-backed, survives restarts) --
 
-export function revokeToken(jti: string): void {
-  revokedTokens.add(jti);
-  if (revokedTokens.size > 10_000) {
-    const first = revokedTokens.values().next().value;
-    if (first) revokedTokens.delete(first);
+let revocationDb: Database | null = null;
+const revokedCache = new Set<string>(); // in-memory cache for hot lookups
+
+export function initRevocationStore(dataDir: string): void {
+  revocationDb = new Database(join(dataDir, "revocations.db"));
+  revocationDb.run("PRAGMA journal_mode = WAL");
+  revocationDb.run("PRAGMA busy_timeout = 5000");
+  revocationDb.run(`
+    CREATE TABLE IF NOT EXISTS revoked_tokens (
+      jti        TEXT PRIMARY KEY,
+      revoked_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )
+  `);
+  // Hydrate cache from disk
+  const rows = revocationDb.prepare("SELECT jti FROM revoked_tokens WHERE expires_at > ?").all(Math.floor(Date.now() / 1000)) as Array<{ jti: string }>;
+  for (const row of rows) revokedCache.add(row.jti);
+  // Periodic cleanup of expired entries (every 5 minutes)
+  setInterval(() => {
+    const now = Math.floor(Date.now() / 1000);
+    revocationDb?.prepare("DELETE FROM revoked_tokens WHERE expires_at <= ?").run(now);
+    // Rebuild cache from DB
+    revokedCache.clear();
+    const active = revocationDb?.prepare("SELECT jti FROM revoked_tokens").all() as Array<{ jti: string }> ?? [];
+    for (const row of active) revokedCache.add(row.jti);
+  }, 5 * 60_000);
+}
+
+export function revokeToken(jti: string, expiresAtSec?: number): void {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = expiresAtSec ?? now + 86400; // default 24h TTL
+  revokedCache.add(jti);
+  if (revocationDb) {
+    revocationDb.prepare(
+      "INSERT OR REPLACE INTO revoked_tokens (jti, revoked_at, expires_at) VALUES (?, ?, ?)"
+    ).run(jti, now, expiresAt);
   }
 }
 
 export function isTokenRevoked(jti: string): boolean {
-  return revokedTokens.has(jti);
+  return revokedCache.has(jti);
 }
 
 //  JWT (HMAC-SHA256, no library) 

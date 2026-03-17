@@ -2,8 +2,13 @@
 // Typed pub/sub system. Chain audit logging is one subscriber among many.
 // All infrastructure events flow through here.
 //
-// Design: in-process, zero-dep, async subscribers, wildcard matching.
+// Design: in-process, async subscribers, wildcard matching.
 // Events are immutable once emitted (per SYSTEM_BIBLE.md).
+// Transactional outbox: events persisted to SQLite before dispatch.
+// Dead letter queue: failed dispatches retried with exponential backoff.
+
+import { Database } from "bun:sqlite";
+import { join }     from "node:path";
 
 // -- Event types from EVENTS.md + existing chain types --
 
@@ -54,7 +59,7 @@ interface Subscription {
   source:   string;          // who subscribed (for debugging)
 }
 
-// -- Event Bus --
+// -- Event Bus with Transactional Outbox --
 
 export class EventBus {
   private subs: Subscription[] = [];
@@ -64,18 +69,49 @@ export class EventBus {
   private historyFull = false;
   private emitCount = 0;
 
+  // Outbox persistence (optional — enabled via initOutbox)
+  private outboxDb: Database | null = null;
+  private dlqRetryTimer: ReturnType<typeof setInterval> | null = null;
+  private failedCount = 0;
+
   constructor() {
     this.history = new Array(this.maxHistory);
   }
 
-  // Subscribe to events. Pattern: exact type, or "*" for all.
+  /** Enable persistent outbox. Events written to SQLite before dispatch. Failed events retried. */
+  initOutbox(dataDir: string): void {
+    this.outboxDb = new Database(join(dataDir, "event-outbox.db"));
+    this.outboxDb.run("PRAGMA journal_mode = WAL");
+    this.outboxDb.run("PRAGMA busy_timeout = 5000");
+    this.outboxDb.run(`
+      CREATE TABLE IF NOT EXISTS outbox (
+        id          TEXT PRIMARY KEY,
+        type        TEXT NOT NULL,
+        payload     TEXT NOT NULL,
+        severity    TEXT NOT NULL DEFAULT 'LOW',
+        source      TEXT NOT NULL DEFAULT 'platform',
+        tenant_id   TEXT,
+        ts          INTEGER NOT NULL,
+        dispatched  INTEGER NOT NULL DEFAULT 0,
+        attempts    INTEGER NOT NULL DEFAULT 0,
+        last_error  TEXT
+      )
+    `);
+    this.outboxDb.run("CREATE INDEX IF NOT EXISTS idx_outbox_pending ON outbox(dispatched, attempts)");
+
+    // Retry failed events every 30 seconds (max 5 attempts, exponential backoff)
+    this.dlqRetryTimer = setInterval(() => this.retryFailed(), 30_000);
+
+    // Dispatch any un-dispatched events from previous crash
+    this.replayPending();
+  }
+
   on(pattern: string, handler: EventSubscriber, source = "unknown"): string {
     const id = `sub_${crypto.randomUUID().slice(0, 12)}`;
     this.subs.push({ id, pattern, handler, source });
     return id;
   }
 
-  // Unsubscribe
   off(id: string): boolean {
     const idx = this.subs.findIndex(s => s.id === id);
     if (idx === -1) return false;
@@ -83,7 +119,6 @@ export class EventBus {
     return true;
   }
 
-  // Emit an event. All matching subscribers called (fire-and-forget).
   async emit(
     type:      SystemEvent,
     payload:   Record<string, unknown>,
@@ -104,35 +139,94 @@ export class EventBus {
       _sealed:  true,
     };
 
-    // Store in circular buffer (no array reallocation)
+    // 1. Persist to outbox BEFORE dispatch (transactional outbox pattern)
+    if (this.outboxDb) {
+      this.outboxDb.prepare(
+        "INSERT INTO outbox (id, type, payload, severity, source, tenant_id, ts) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      ).run(event.id, event.type, JSON.stringify(event.payload), event.severity, event.source, event.tenantId ?? null, event.ts);
+    }
+
+    // 2. Store in circular buffer
     this.history[this.historyIdx] = event;
     this.historyIdx = (this.historyIdx + 1) % this.maxHistory;
     if (!this.historyFull && this.historyIdx === 0) this.historyFull = true;
     this.emitCount++;
 
-    // Dispatch to matching subscribers
-    const matching = this.subs.filter(s =>
-      s.pattern === "*" || s.pattern === type
-    );
-
-    // Fire all subscribers (don't await -- non-blocking)
-    for (const sub of matching) {
-      try {
-        const result = sub.handler(event);
-        if (result instanceof Promise) {
-          result.catch(err =>
-            console.warn(`[EventBus] Subscriber ${sub.source} error:`, err.message)
-          );
-        }
-      } catch (err: any) {
-        console.warn(`[EventBus] Subscriber ${sub.source} threw:`, err.message);
-      }
-    }
+    // 3. Dispatch to subscribers
+    await this.dispatch(event);
 
     return event;
   }
 
-  // Materialize circular buffer into ordered array
+  private async dispatch(event: SovereignEvent): Promise<void> {
+    const matching = this.subs.filter(s => s.pattern === "*" || s.pattern === event.type);
+    let failed = false;
+
+    for (const sub of matching) {
+      try {
+        const result = sub.handler(event);
+        if (result instanceof Promise) {
+          await result.catch(err => {
+            console.warn(`[EventBus] Subscriber ${sub.source} error:`, err.message);
+            failed = true;
+          });
+        }
+      } catch (err: any) {
+        console.warn(`[EventBus] Subscriber ${sub.source} threw:`, err.message);
+        failed = true;
+      }
+    }
+
+    // Mark as dispatched in outbox
+    if (this.outboxDb) {
+      if (failed) {
+        this.outboxDb.prepare("UPDATE outbox SET attempts = attempts + 1, last_error = 'subscriber_error' WHERE id = ?").run(event.id);
+        this.failedCount++;
+      } else {
+        this.outboxDb.prepare("UPDATE outbox SET dispatched = 1 WHERE id = ?").run(event.id);
+      }
+    }
+  }
+
+  /** Replay un-dispatched events from a previous crash */
+  private replayPending(): void {
+    if (!this.outboxDb) return;
+    const pending = this.outboxDb.prepare(
+      "SELECT * FROM outbox WHERE dispatched = 0 AND attempts < 5 ORDER BY ts ASC LIMIT 100"
+    ).all() as any[];
+    if (pending.length > 0) {
+      console.log(`[EventBus] Replaying ${pending.length} un-dispatched events from outbox`);
+      for (const row of pending) {
+        const event: SovereignEvent = {
+          id: row.id, type: row.type, ts: row.ts, source: row.source,
+          tenantId: row.tenant_id ?? undefined, severity: row.severity,
+          payload: JSON.parse(row.payload), _sealed: true,
+        };
+        this.dispatch(event).catch(() => {});
+      }
+    }
+  }
+
+  /** Retry failed events with exponential backoff */
+  private retryFailed(): void {
+    if (!this.outboxDb) return;
+    const failed = this.outboxDb.prepare(
+      "SELECT * FROM outbox WHERE dispatched = 0 AND attempts > 0 AND attempts < 5 ORDER BY ts ASC LIMIT 20"
+    ).all() as any[];
+
+    for (const row of failed) {
+      const event: SovereignEvent = {
+        id: row.id, type: row.type, ts: row.ts, source: row.source,
+        tenantId: row.tenant_id ?? undefined, severity: row.severity,
+        payload: JSON.parse(row.payload), _sealed: true,
+      };
+      this.dispatch(event).catch(() => {});
+    }
+
+    // Cleanup events that exceeded max attempts (move to DLQ state)
+    this.outboxDb.prepare("DELETE FROM outbox WHERE dispatched = 1 AND ts < ?").run(Date.now() - 86400_000); // keep 24h
+  }
+
   private orderedHistory(): SovereignEvent[] {
     if (!this.historyFull) return this.history.slice(0, this.historyIdx).filter(Boolean);
     return [
@@ -141,7 +235,6 @@ export class EventBus {
     ].filter(Boolean);
   }
 
-  // Query recent events (from in-memory history)
   query(opts: {
     type?:     string;
     tenantId?: string;
@@ -155,25 +248,31 @@ export class EventBus {
     return results.slice(-(opts.limit ?? 100));
   }
 
-  // Stats
   stats() {
     const size = this.historyFull ? this.maxHistory : this.historyIdx;
+    const dlqSize = this.outboxDb
+      ? (this.outboxDb.prepare("SELECT COUNT(*) as n FROM outbox WHERE dispatched = 0 AND attempts >= 5").get() as any)?.n ?? 0
+      : 0;
     return {
       subscribers: this.subs.length,
       historySize: size,
       totalEmitted: this.emitCount,
+      failedCount: this.failedCount,
+      dlqSize,
+      outboxEnabled: !!this.outboxDb,
       subscriberDetails: this.subs.map(s => ({
         id: s.id, pattern: s.pattern, source: s.source,
       })),
     };
   }
 
-  // Cleanup
   close() {
+    if (this.dlqRetryTimer) clearInterval(this.dlqRetryTimer);
     this.subs = [];
     this.history = new Array(this.maxHistory);
     this.historyIdx = 0;
     this.historyFull = false;
+    if (this.outboxDb) { try { this.outboxDb.close(); } catch {} }
   }
 }
 

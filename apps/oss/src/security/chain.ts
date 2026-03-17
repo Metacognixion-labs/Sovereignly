@@ -29,7 +29,7 @@ import { join }     from "node:path";
 import {
   sha256, signEd25519, verifyEd25519, safeJsonParse,
   generateNodeKeyPair, NodeKeyPair,
-  MerkleTree, toHex,
+  MerkleTree, IncrementalMerkleTree, toHex,
 } from "./crypto.ts";
 import { sha3Hash } from "./pqc.ts";
 
@@ -315,8 +315,11 @@ export class SovereignChain {
         `${e.id}|${e.type}|${e.ts}|${e.nodeId}|${JSON.stringify(e.payload, Object.keys(e.payload).sort())}`
       ))
     );
-    const tree       = new MerkleTree(merkleLeaves);
-    const merkleRoot = await tree.root();
+    // Use incremental Merkle tree for O(log N) root computation
+    const incrTree = new IncrementalMerkleTree(32);
+    const merkleRoot = await incrTree.insertBatch(merkleLeaves);
+    // Keep full MerkleTree for proof generation on individual events
+    const tree = new MerkleTree(merkleLeaves);
 
     // Post-quantum dual Merkle root (SHA3-256)
     const pqLeaves = merkleLeaves.map(leaf => sha3Hash(leaf));

@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "./security/crypto.ts";
+import { initRevocationStore } from "./security/zero-trust.ts";
 /**
  * Sovereignly OSS  Single-Tenant Server
  * MIT License  MetaCognixion
@@ -41,6 +42,7 @@ import { PluginRegistry }           from "./ecosystem/plugins.ts";
 import { TemplateRegistry }         from "./ecosystem/templates.ts";
 import { GamificationEngine }       from "./ecosystem/gamification.ts";
 import { registerEcosystemRoutes }  from "./ecosystem/routes.ts";
+import { tracingMiddleware, prometheusHandler, log } from "./observability/index.ts";
 
 //  Config 
 
@@ -83,6 +85,10 @@ console.log(`
 
 await mkdir(DATA_DIR, { recursive: true });
 await mkdir(`${DATA_DIR}/platform`, { recursive: true });
+
+// Initialize persistent stores
+initRevocationStore(`${DATA_DIR}/platform`);
+platformBus.initOutbox(`${DATA_DIR}/platform`);
 
 //  1. Omnichain anchor 
 
@@ -145,6 +151,10 @@ const { app, metrics, cache, limiter } = createGateway(runtime, kv, storage, {
   enableCompression: process.env.NODE_ENV === "production",
   logLevel: (process.env.LOG_LEVEL ?? "minimal") as any,
 });
+
+// Observability: request tracing + Prometheus metrics
+app.use("*", tracingMiddleware());
+app.get("/_sovereign/prometheus", (c) => prometheusHandler(c));
 
 registerChainRoutes(app, chain, null, { adminToken: ADMIN_TOKEN, jwtSecret: JWT_SECRET });
 registerAuthRoutes(app, passkeys, oauthBroker, chain, { jwtSecret: JWT_SECRET, adminToken: ADMIN_TOKEN, appUrl: APP_URL });
