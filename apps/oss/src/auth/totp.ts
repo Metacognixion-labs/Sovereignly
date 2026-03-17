@@ -123,6 +123,8 @@ export class TOTPService {
     this.encPassword = opts.encPassword;
     this.db = new Database(join(opts.dataDir, "auth.db"));
     this.db.run("PRAGMA journal_mode = WAL");
+    this.db.run("PRAGMA cache_size = -8000");
+    this.db.run("PRAGMA busy_timeout = 5000");
 
     this.db.run(`
       CREATE TABLE IF NOT EXISTS totp_secrets (

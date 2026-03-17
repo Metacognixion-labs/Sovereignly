@@ -39,6 +39,8 @@ export class TokenManager {
     // Config persistence
     this.configDb = new Database(join(opts.dataDir, "token-config.db"));
     this.configDb.run("PRAGMA journal_mode = WAL");
+    this.configDb.run("PRAGMA cache_size = -8000");
+    this.configDb.run("PRAGMA busy_timeout = 5000");
     this.configDb.run(`
       CREATE TABLE IF NOT EXISTS token_config (
         key   TEXT PRIMARY KEY,

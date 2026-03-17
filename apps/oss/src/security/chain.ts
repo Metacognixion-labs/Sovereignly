@@ -105,6 +105,7 @@ export interface ChainConfig {
 
 export class SovereignChain {
   private db:       Database;
+  private reader:   Database;  // read-only connection for concurrent reads
   private cfg:      ChainConfig;
   private kp:       NodeKeyPair | null = null;
   private pending:  AuditEvent[] = [];
@@ -123,7 +124,9 @@ export class SovereignChain {
       peers: [],
       ...cfg,
     };
-    this.db = new Database(join(this.cfg.dataDir, "chain.db"));
+    const dbPath = join(this.cfg.dataDir, "chain.db");
+    this.db = new Database(dbPath);
+    this.reader = new Database(dbPath, { readonly: true });
     this.bootstrap();
   }
 
@@ -132,6 +135,13 @@ export class SovereignChain {
   private bootstrap() {
     this.db.run("PRAGMA journal_mode = WAL");
     this.db.run("PRAGMA synchronous = NORMAL");
+    this.db.run("PRAGMA cache_size = -64000");
+    this.db.run("PRAGMA busy_timeout = 5000");
+    this.db.run("PRAGMA temp_store = MEMORY");
+
+    // Reader connection tuning (read-only, no WAL checkpoint)
+    this.reader.run("PRAGMA cache_size = -64000");
+    this.reader.run("PRAGMA temp_store = MEMORY");
 
     this.db.run(`
       CREATE TABLE IF NOT EXISTS blocks (
@@ -511,7 +521,7 @@ export class SovereignChain {
   //  Query API 
 
   getTip(): Block | null {
-    const row = this.db.prepare(`
+    const row = this.reader.prepare(`
       SELECT idx AS [index], ts, prev_hash AS prevHash, merkle_root AS merkleRoot,
              event_count AS eventCount, node_id AS nodeId, signature, block_hash AS blockHash,
              acks
@@ -523,7 +533,7 @@ export class SovereignChain {
   }
 
   getBlock(index: number): Block | null {
-    const row = this.db.prepare(`
+    const row = this.reader.prepare(`
       SELECT idx AS [index], ts, prev_hash AS prevHash, merkle_root AS merkleRoot,
              event_count AS eventCount, node_id AS nodeId, signature, block_hash AS blockHash,
              acks
@@ -550,7 +560,7 @@ export class SovereignChain {
     const where  = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const limit  = opts.limit ?? 100;
 
-    const rows = this.db.prepare(`
+    const rows = this.reader.prepare(`
       SELECT * FROM events ${where} ORDER BY ts DESC LIMIT ?
     `).all(...(params as any[]), limit) as any[];
 
@@ -577,7 +587,7 @@ export class SovereignChain {
     }
     sql += " ORDER BY idx DESC LIMIT ? OFFSET ?";
     params.push(limit, offset);
-    return (this.db.prepare(sql).all(...(params as any[])) as any[]).map(row => ({
+    return (this.reader.prepare(sql).all(...(params as any[])) as any[]).map(row => ({
       index:      row.idx,
       ts:         row.ts,
       prevHash:   row.prev_hash,
@@ -592,10 +602,10 @@ export class SovereignChain {
   }
 
   getStats() {
-    const blocks     = (this.db.prepare("SELECT COUNT(*) AS n FROM blocks").get() as any).n;
-    const events     = (this.db.prepare("SELECT COUNT(*) AS n FROM events").get() as any).n;
-    const anchored   = (this.db.prepare("SELECT COUNT(*) AS n FROM blocks WHERE anchored=1").get() as any).n;
-    const critical   = (this.db.prepare("SELECT COUNT(*) AS n FROM events WHERE severity='CRITICAL'").get() as any).n;
+    const blocks     = (this.reader.prepare("SELECT COUNT(*) AS n FROM blocks").get() as any).n;
+    const events     = (this.reader.prepare("SELECT COUNT(*) AS n FROM events").get() as any).n;
+    const anchored   = (this.reader.prepare("SELECT COUNT(*) AS n FROM blocks WHERE anchored=1").get() as any).n;
+    const critical   = (this.reader.prepare("SELECT COUNT(*) AS n FROM events WHERE severity='CRITICAL'").get() as any).n;
     const tip        = this.getTip();
 
     return { blocks, events, anchored, critical, tip };
@@ -603,7 +613,7 @@ export class SovereignChain {
 
   /** Verify entire chain integrity (O(n)  use sparingly) */
   async verifyChainIntegrity(): Promise<{ valid: boolean; failedAt?: number; reason?: string }> {
-    const allBlocks = this.db.prepare(
+    const allBlocks = this.reader.prepare(
       "SELECT * FROM blocks ORDER BY idx ASC"
     ).all() as any[];
 
@@ -663,6 +673,7 @@ export class SovereignChain {
 
   close(): void {
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    try { this.reader.close(); } catch {}
     if (!this.kp) { try { this.db.close(); } catch {} return; }
     this.kp = null; // Prevent double-close
     this.flush().then(() => { try { this.db.close(); } catch {} });

@@ -72,6 +72,9 @@ export class TokenLedger {
   private initSchema() {
     this.db.run("PRAGMA journal_mode = WAL");
     this.db.run("PRAGMA foreign_keys = ON");
+    this.db.run("PRAGMA cache_size = -32000");
+    this.db.run("PRAGMA busy_timeout = 5000");
+    this.db.run("PRAGMA temp_store = MEMORY");
 
     this.db.run(`
       CREATE TABLE IF NOT EXISTS accounts (

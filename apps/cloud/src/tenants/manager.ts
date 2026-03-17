@@ -134,6 +134,9 @@ export class TenantManager {
 
   private initSchema() {
     this.registry.run("PRAGMA journal_mode = WAL");
+    this.registry.run("PRAGMA cache_size = -32000");
+    this.registry.run("PRAGMA busy_timeout = 5000");
+    this.registry.run("PRAGMA temp_store = MEMORY");
     this.registry.run(`
       CREATE TABLE IF NOT EXISTS tenants (
         id                  TEXT PRIMARY KEY,

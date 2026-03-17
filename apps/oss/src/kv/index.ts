@@ -62,6 +62,7 @@ export interface KVStats {
 
 export class SovereignKV {
   private db: Database;
+  private reader: Database;  // read-only connection for concurrent reads
   private hits = 0;
   private misses = 0;
   private gcTimer: Timer;
@@ -78,8 +79,13 @@ export class SovereignKV {
     const dataDir = options.dataDir ?? "./data/kv";
     Bun.spawnSync(["mkdir", "-p", dataDir]);
 
-    this.db = new Database(join(dataDir, "kv.sqlite"), { create: true });
+    const dbPath = join(dataDir, "kv.sqlite");
+    this.db = new Database(dbPath, { create: true });
+    this.reader = new Database(dbPath, { readonly: true });
     this.db.exec(SCHEMA);
+    // Reader tuning
+    this.reader.run("PRAGMA cache_size = -64000");
+    this.reader.run("PRAGMA temp_store = MEMORY");
     this.prepareStatements();
 
     // GC expired keys every 60s
@@ -128,7 +134,7 @@ export class SovereignKV {
 
 
   private prepareStatements() {
-    this.stmtGet = this.db.prepare(`
+    this.stmtGet = this.reader.prepare(`
       SELECT value FROM kv
       WHERE ns = $ns AND key = $key
         AND (expires IS NULL OR expires > $now)
@@ -148,7 +154,7 @@ export class SovereignKV {
       DELETE FROM kv WHERE ns = $ns AND key = $key
     `);
 
-    this.stmtList = this.db.prepare(`
+    this.stmtList = this.reader.prepare(`
       SELECT key, meta FROM kv
       WHERE ns = $ns
         AND ($prefix IS NULL OR key LIKE $prefix || '%')
@@ -248,6 +254,7 @@ export class SovereignKV {
 
   close() {
     clearInterval(this.gcTimer);
+    try { this.reader.close(); } catch {}
     this.db.close();
   }
 }

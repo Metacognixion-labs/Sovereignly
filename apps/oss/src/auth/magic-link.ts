@@ -50,6 +50,8 @@ export class MagicLinkService {
     try { fs.mkdirSync(opts.dataDir, { recursive: true }); } catch {}
     this.db = new Database(join(opts.dataDir, "auth.db"));
     this.db.run("PRAGMA journal_mode = WAL");
+    this.db.run("PRAGMA cache_size = -8000");
+    this.db.run("PRAGMA busy_timeout = 5000");
     this.db.run(`
       CREATE TABLE IF NOT EXISTS magic_codes (
         id          TEXT PRIMARY KEY,

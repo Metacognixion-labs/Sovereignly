@@ -8,6 +8,7 @@ import { timingSafeEqual } from "../security/crypto.ts";
  */
 
 import type { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import type { SovereignChain } from "../security/chain.ts";
 import { issueJWT } from "../security/zero-trust.ts";
 
@@ -72,6 +73,52 @@ export function registerChainRoutes(
       limit:    Math.min(parseInt(limit ?? "50"), 500),
     });
     return c.json({ count: events.length, events });
+  });
+
+  //  Real-time SSE stream for chain events and blocks
+  app.get("/_sovereign/chain/stream", (c) => {
+    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
+
+    return streamSSE(c, async (stream) => {
+      let lastEventTs = Date.now();
+      let lastBlockIdx = chain.getTip()?.index ?? 0;
+
+      // Register block observer
+      const onBlock = (block: any) => {
+        stream.writeSSE({
+          event: "block",
+          data: JSON.stringify({ index: block.index, merkleRoot: block.merkleRoot, eventCount: block.eventCount, ts: block.ts }),
+          id: `block-${block.index}`,
+        }).catch(() => {});
+      };
+
+      const onEvent = (event: any) => {
+        stream.writeSSE({
+          event: "audit",
+          data: JSON.stringify({ id: event.id, type: event.type, severity: event.severity, ts: event.ts }),
+          id: event.id,
+        }).catch(() => {});
+      };
+
+      chain.onBlock(onBlock);
+      chain.onEvent(onEvent);
+
+      // Send initial state
+      await stream.writeSSE({ event: "connected", data: JSON.stringify({ tip: lastBlockIdx, ts: Date.now() }), id: "init" });
+
+      // Keep alive with heartbeat every 15s
+      const heartbeat = setInterval(() => {
+        stream.writeSSE({ event: "heartbeat", data: JSON.stringify({ ts: Date.now() }), id: `hb-${Date.now()}` }).catch(() => {});
+      }, 15_000);
+
+      stream.onAbort(() => {
+        clearInterval(heartbeat);
+        // Note: observers are function references, chain doesn't expose removeListener yet
+      });
+
+      // Block until stream closes
+      await new Promise(() => {});
+    });
   });
 
   app.get("/_sovereign/chain/blocks", (c) => {

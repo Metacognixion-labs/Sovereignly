@@ -81,6 +81,8 @@ class UserStore {
   constructor(dataDir: string) {
     this.db = new Database(join(dataDir, "users.db"));
     this.db.run("PRAGMA journal_mode = WAL");
+    this.db.run("PRAGMA cache_size = -16000");
+    this.db.run("PRAGMA busy_timeout = 5000");
     this.db.run(`
       CREATE TABLE IF NOT EXISTS users (
         id              TEXT PRIMARY KEY,

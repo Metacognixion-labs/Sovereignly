@@ -244,75 +244,44 @@ export class SovereignChain {
   /**
    * Get current chain status and proof of integrity.
    */
-  async status(): Promise<{
-    blockCount:      number;
-    eventCount:      number;
-    chainTip:        string;
-    meridianAnchor?: string;
-    ethereumAnchor?: string;
-    healthy:         boolean;
-  }> {
-    return this.request(`/v1/orgs/${this.cfg.orgId}/status`) as Promise<{
+  async status() {
+    return this.request<{
       blockCount:      number;
       eventCount:      number;
       chainTip:        string;
       meridianAnchor?: string;
       ethereumAnchor?: string;
       healthy:         boolean;
-    }>;
+    }>(`/v1/orgs/${this.cfg.orgId}/status`);
   }
 
   /**
    * Verify a specific event's inclusion in the chain.
    * Returns a Merkle proof that can be independently verified.
    */
-  async verifyEvent(eventId: string): Promise<{
-    exists:  boolean;
-    proof?:  { root: string; path: string[]; index: number };
-    anchor?: {
-      chains:   string[];                    // e.g. ["eas-base", "solana"]
-      receipts: Array<{
-        chain:   string;
-        txHash?: string;
-        uid?:    string;
-        url?:    string;
-      }>;
-      schemaUID?: string;
-      verifyAt?:  string;                    // easscan.org URL
-    };
-  }> {
-    return this.request(`/v1/events/${eventId}/proof?orgId=${this.cfg.orgId}`) as Promise<{
+  async verifyEvent(eventId: string) {
+    return this.request<{
       exists:  boolean;
       proof?:  { root: string; path: string[]; index: number };
       anchor?: {
         chains:   string[];
-        receipts: Array<{
-          chain:   string;
-          txHash?: string;
-          uid?:    string;
-          url?:    string;
-        }>;
+        receipts: Array<{ chain: string; txHash?: string; uid?: string; url?: string }>;
         schemaUID?: string;
         verifyAt?:  string;
       };
-    }>;
+    }>(`/v1/events/${eventId}/proof?orgId=${this.cfg.orgId}`);
   }
 
   /**
    * Get anchor info -- schema UID, verification URLs, chains available for this org.
    */
-  async anchorInfo(): Promise<{
-    schema:  string;
-    uid:     string;
-    viewers: string[];
-    chains:  Record<string, { desc: string; url: string }>;
-  }> {
-    return this.request(`/chain/anchor/schema`) as Promise<{
+  async anchorInfo() {
+    return this.request<{
       schema:  string;
       uid:     string;
       viewers: string[];
       chains:  Record<string, { desc: string; url: string }>;
-    }>;
+    }>(`/chain/anchor/schema`);
   }
 
   // -- Internal batch management ------------------------------------------------
@@ -366,7 +335,7 @@ export class SovereignChain {
     }));
   }
 
-  private async request(path: string, init?: RequestInit): Promise<unknown> {
+  private async request<T = unknown>(path: string, init?: RequestInit): Promise<T> {
     const url = `${this.cfg.endpoint}${path}`;
     const res = await this.cfg.fetch(url, {
       ...init,
@@ -385,7 +354,7 @@ export class SovereignChain {
       throw new Error(`SovereignChain API ${res.status}: ${body}`);
     }
 
-    return res.json();
+    return res.json() as Promise<T>;
   }
 
   // -- Lifecycle -----------------------------------------------------------------
