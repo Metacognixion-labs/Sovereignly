@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // output: "standalone", // Enable for Docker deployment
+  output: "standalone",
   async rewrites() {
     return [
       {
