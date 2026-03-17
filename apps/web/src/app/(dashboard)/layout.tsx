@@ -128,7 +128,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="px-4 py-4 border-b border-border">
           <div className="flex items-center gap-2.5">
             <img src="/logo.svg" alt="Sovereignly" className="w-8 h-8 drop-shadow-[0_0_8px_rgba(76,175,80,0.3)]" />
-            </div>
             <div>
               <div className="text-xs font-semibold tracking-wider text-brand">SOVEREIGNLY</div>
               <div className="text-[9px] font-mono text-text-muted">v4.0.0</div>
