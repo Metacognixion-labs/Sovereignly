@@ -185,7 +185,7 @@ class UserStore {
     this.db.prepare(`
       INSERT INTO users (id,email,display_name,role,plan,auth_methods,created_at,last_seen_at)
       VALUES (?,?,?,?,?,?,?,?)
-    `).run(id, user.email, user.displayName, user.role, user.plan,
+    `).run(id, user.email ?? null, user.displayName, user.role, user.plan,
            JSON.stringify(user.authMethods), now, now);
     return user;
   }
@@ -559,7 +559,6 @@ export function registerAuthRoutes(
     const result = await magicLink.requestCode(email, "signin");
     if (!result.ok) return c.json({ error: result.error }, 429);
 
-    void chain.emit("AUTH_ATTEMPT", { method: "magic_link", email, ip: clientIP(c) }, "LOW");
     return c.json({ requiresCode: true });
   });
 
