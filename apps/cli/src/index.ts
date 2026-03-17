@@ -21,6 +21,7 @@ import { chain } from "./commands/chain.ts";
 import { compliance } from "./commands/compliance.ts";
 import { init } from "./commands/init.ts";
 import { login } from "./commands/login.ts";
+import { quantum } from "./commands/quantum.ts";
 
 const VERSION = "4.0.0";
 const args = process.argv.slice(2);
@@ -50,6 +51,8 @@ ${c.bold}Commands:${c.reset}
   ${c.green}chain${c.reset} stats       Show chain statistics
   ${c.green}chain${c.reset} verify      Verify chain integrity
   ${c.green}compliance${c.reset} [std]  Generate compliance report (soc2, iso27001, nist)
+  ${c.green}quantum${c.reset} status     Post-quantum cryptography status
+  ${c.green}quantum${c.reset} attest     Trigger quantum attestation of chain
   ${c.green}deploy${c.reset}            Deploy to Fly.io
   ${c.green}login${c.reset}             Authenticate and save credentials
   ${c.green}version${c.reset}           Show version
@@ -78,6 +81,9 @@ async function run() {
       break;
     case "compliance":
       await compliance(config, args[1]);
+      break;
+    case "quantum":
+      await quantum(config, args.slice(1));
       break;
     case "deploy":
       console.log(`${c.cyan}Deploying to Fly.io...${c.reset}`);

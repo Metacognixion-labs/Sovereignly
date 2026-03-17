@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Blocks, Link2, ShieldCheck, ScrollText,
   Database, Settings, Activity, Coins, Cpu, Globe,
-  Search, ChevronRight,
+  Search, ChevronRight, Atom,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
@@ -19,9 +19,12 @@ const NAV = [
   { section: "Data" },
   { label: "KV Store",    href: "/kv",         icon: Database },
 
+  { section: "Security" },
+  { label: "Quantum",     href: "/quantum",    icon: Atom },
+  { label: "Compliance",  href: "/compliance", icon: ShieldCheck },
+
   { section: "Observability" },
   { label: "Logs",        href: "/logs",       icon: ScrollText },
-  { label: "Compliance",  href: "/compliance", icon: ShieldCheck },
 
   { section: "System" },
   { label: "Settings",    href: "/settings",   icon: Settings },

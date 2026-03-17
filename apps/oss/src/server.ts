@@ -47,6 +47,7 @@ import { CAEPReceiver, registerCAEPRoutes } from "./auth/caep.ts";
 import { CredentialExchange, registerCXPRoutes } from "./auth/credential-exchange.ts";
 import { VCIssuer, registerVCRoutes } from "./identity/vc.ts";
 import { ComplianceEvaluator } from "./policies/compliance-rules.ts";
+import { registerQuantumStatusRoutes } from "./security/quantum-status.ts";
 
 //  Config 
 
@@ -198,8 +199,9 @@ registerCXPRoutes(app, credExchange, { jwtSecret: JWT_SECRET });
 
 registerProtocolRoutes(app, platformBus, policyEngine, { adminToken: ADMIN_TOKEN });
 
-// Compliance-as-code endpoint
+// Compliance-as-code + Quantum status endpoints
 app.get("/_sovereign/compliance/live", (c) => c.json(complianceEvaluator.report()));
+registerQuantumStatusRoutes(app, chain, { adminToken: ADMIN_TOKEN });
 registerWorkflowRoutes(app, workflowEngine, platformBus, { adminToken: ADMIN_TOKEN });
 registerAgentRoutes(app, agentRuntime, platformBus, { adminToken: ADMIN_TOKEN });
 registerEcosystemRoutes(app, pluginRegistry, templateRegistry, gamification, { adminToken: ADMIN_TOKEN });

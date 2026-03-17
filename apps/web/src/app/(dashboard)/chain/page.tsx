@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Link2, ShieldCheck, Hash, Clock } from "lucide-react";
+import { Link2, ShieldCheck, Hash, Clock, Atom } from "lucide-react";
 
 export default function ChainPage() {
   const [stats, setStats] = useState<any>(null);
@@ -15,9 +15,19 @@ export default function ChainPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Audit Chain</h1>
-        <p className="text-sm text-text-muted mt-0.5">Immutable, cryptographically signed event log</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Audit Chain</h1>
+          <p className="text-sm text-text-muted mt-0.5">Immutable, cryptographically signed event log</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono border" style={{ background: "rgba(167,139,250,0.1)", borderColor: "rgba(167,139,250,0.2)", color: "#a78bfa" }}>
+            <Atom className="w-3 h-3" /> SHA-256 + SHA3-256 Dual Roots
+          </span>
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono bg-green/10 text-green border border-green/20">
+            Ed25519 Signed
+          </span>
+        </div>
       </div>
 
       {/* Stats */}

@@ -201,6 +201,12 @@ export function createGateway(
         events:   chainStats.events,
         anchored: chainStats.anchored,
       } : null,
+      pqc: {
+        enabled:         true,
+        dualMerkleRoots: true,
+        algorithms:      ["Ed25519+ML-DSA-65", "SHA-256+SHA3-256", "ML-KEM-768", "Poseidon-BN254"],
+        quantumCloud:    !!process.env.QUANTUM_API_TOKEN,
+      },
     }, status === "healthy" ? 200 : 503);
   });
 
