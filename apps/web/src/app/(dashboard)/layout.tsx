@@ -126,9 +126,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className="w-56 shrink-0 border-r border-border bg-surface/80 flex flex-col overflow-y-auto">
         {/* Logo */}
         <div className="px-4 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-brand/15 border border-brand/25 flex items-center justify-center">
-              <Globe className="w-4 h-4 text-brand" />
+          <div className="flex items-center gap-2.5">
+            <img src="/logo.svg" alt="Sovereignly" className="w-8 h-8 drop-shadow-[0_0_8px_rgba(76,175,80,0.3)]" />
             </div>
             <div>
               <div className="text-xs font-semibold tracking-wider text-brand">SOVEREIGNLY</div>

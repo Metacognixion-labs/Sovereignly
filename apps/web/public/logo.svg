@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- Shield shape -->
+  <path d="M24 4L6 12v12c0 11 8 18 18 22 10-4 18-11 18-22V12L24 4z" fill="url(#shield)"/>
+  <!-- Green left -->
+  <path d="M24 4L6 12v12c0 11 8 18 18 22V4z" fill="url(#green)"/>
+  <!-- Blue right -->
+  <path d="M24 4l18 8v12c0 11-8 18-18 22V4z" fill="url(#blue)"/>
+  <!-- Dark bottom overlay -->
+  <path d="M24 38c-6-3-12-8-14-16v2c0 11 8 18 18 22 10-4 18-11 18-22v-2c-2 8-8 13-14 16z" fill="#1a2332" opacity="0.4"/>
+  <!-- Cloud -->
+  <path d="M20 28c-3 0-5-2-5-5s2-5 5-5c.5-3 3-5 6-5 3.5 0 6 2.5 6 6 2 0 4 1.5 4 4s-2 4-4 4H20z" fill="white" opacity="0.95"/>
+  <!-- Circuit nodes -->
+  <circle cx="16" cy="20" r="1.5" fill="white"/>
+  <circle cx="14" cy="26" r="1.5" fill="white"/>
+  <circle cx="18" cy="30" r="1.5" fill="white"/>
+  <line x1="16" y1="20" x2="14" y2="26" stroke="white" stroke-width="1.2"/>
+  <line x1="14" y1="26" x2="18" y2="30" stroke="white" stroke-width="1.2"/>
+  <line x1="16" y1="20" x2="20" y2="23" stroke="white" stroke-width="1.2"/>
+  <defs>
+    <linearGradient id="green" x1="6" y1="4" x2="24" y2="40">
+      <stop offset="0%" stop-color="#4CAF50"/>
+      <stop offset="100%" stop-color="#2E7D32"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="24" y1="4" x2="42" y2="40">
+      <stop offset="0%" stop-color="#42A5F5"/>
+      <stop offset="100%" stop-color="#1565C0"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="24" y1="4" x2="24" y2="48">
+      <stop offset="0%" stop-color="#4CAF50"/>
+      <stop offset="100%" stop-color="#1565C0"/>
+    </linearGradient>
+  </defs>
+</svg>

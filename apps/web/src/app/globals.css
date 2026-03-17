@@ -1,24 +1,36 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: oklch(0.07 0.01 250);
-  --color-surface: oklch(0.11 0.01 250);
-  --color-panel: oklch(0.14 0.015 250);
-  --color-border: oklch(0.22 0.02 250);
-  --color-border-bright: oklch(0.28 0.025 250);
+  /* Brand colors from Sovereignly shield logo */
+  --color-background: #0a1018;
+  --color-surface: #0f1923;
+  --color-panel: #141f2e;
+  --color-border: #1e2d3d;
+  --color-border-bright: #2a3d52;
 
-  --color-brand: oklch(0.78 0.22 145);
-  --color-brand-bright: oklch(0.84 0.24 145);
-  --color-cyan: oklch(0.75 0.15 220);
-  --color-green: oklch(0.80 0.20 160);
-  --color-amber: oklch(0.82 0.18 85);
-  --color-red: oklch(0.65 0.22 25);
-  --color-violet: oklch(0.65 0.22 300);
+  /* Shield Green (left) */
+  --color-brand: #4CAF50;
+  --color-brand-bright: #66BB6A;
+  --color-brand-dim: #2E7D32;
+  --color-green: #4CAF50;
 
-  --color-text-primary: oklch(0.93 0.01 250);
-  --color-text-secondary: oklch(0.65 0.02 250);
-  --color-text-muted: oklch(0.45 0.02 250);
+  /* Shield Blue (right) */
+  --color-blue: #42A5F5;
+  --color-blue-bright: #64B5F6;
+  --color-blue-dim: #1565C0;
+  --color-cyan: #42A5F5;
 
+  /* Status colors */
+  --color-amber: #FFA726;
+  --color-red: #EF5350;
+  --color-violet: #AB47BC;
+
+  /* Text */
+  --color-text-primary: #E8EDF2;
+  --color-text-secondary: #8BA3BB;
+  --color-text-muted: #4A6380;
+
+  /* Fonts */
   --font-sans: "Geist Sans", "Inter", system-ui, sans-serif;
   --font-mono: "Geist Mono", "JetBrains Mono", monospace;
 }
@@ -33,6 +45,18 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 40% at 15% 0%, rgba(76, 175, 80, 0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 35% at 85% 100%, rgba(66, 165, 245, 0.03) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* Scrollbar */
@@ -58,4 +82,18 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
   border-radius: 4px;
+}
+
+/* Brand gradient text */
+.text-brand-gradient {
+  background: linear-gradient(135deg, #4CAF50 0%, #42A5F5 50%, #AB47BC 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Shield gradient for cards/accents */
+.bg-shield-gradient {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(66, 165, 245, 0.1) 100%);
+  border: 1px solid rgba(76, 175, 80, 0.15);
 }

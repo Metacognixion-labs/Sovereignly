@@ -37,12 +37,12 @@ const PLANS = [
 ];
 
 const FEATURES = [
-  { icon: Link2, title: "Cryptographic Audit Chain", desc: "Every execution Ed25519-signed, Merkle-batched, and immutable. Full non-repudiation for every API call, deploy, and config change.", color: "#00d4ff" },
-  { icon: Globe, title: "Omnichain Attestation", desc: "Merkle roots sealed to EAS/Base, Arbitrum, Solana, Irys, and Bitcoin. Independent verification on 5+ public blockchains for $0.63/yr.", color: "#0df23b" },
-  { icon: Atom, title: "Post-Quantum Security", desc: "Hybrid Ed25519 + ML-DSA-65 signatures. SHA-256 + SHA3-256 dual Merkle roots. ML-KEM-768 encryption. NIST FIPS 203/204 compliant.", color: "#a78bfa" },
-  { icon: ShieldCheck, title: "Compliance as Code", desc: "SOC2, ISO 27001, HIPAA, GDPR reports auto-generated from chain evidence. Live compliance scoring. Verifiable Credentials (W3C).", color: "#0df23b" },
-  { icon: Zap, title: "Quantum Cloud", desc: "Origin Wukong 72-qubit quantum processor integration. Quantum random numbers. Quantum-attested Merkle roots. Hardware entropy.", color: "#a78bfa" },
-  { icon: Lock, title: "Zero-Trust by Default", desc: "Anomaly detection, RBAC, secret scanning, input shielding, SSRF guard, intent guard. Every security event logged to chain.", color: "#ff3b55" },
+  { icon: Link2, title: "Cryptographic Audit Chain", desc: "Every execution Ed25519-signed, Merkle-batched, and immutable. Full non-repudiation for every API call, deploy, and config change.", color: "#42A5F5" },
+  { icon: Globe, title: "Omnichain Attestation", desc: "Merkle roots sealed to EAS/Base, Arbitrum, Solana, Irys, and Bitcoin. Independent verification on 5+ public blockchains for $0.63/yr.", color: "#4CAF50" },
+  { icon: Atom, title: "Post-Quantum Security", desc: "Hybrid Ed25519 + ML-DSA-65 signatures. SHA-256 + SHA3-256 dual Merkle roots. ML-KEM-768 encryption. NIST FIPS 203/204 compliant.", color: "#AB47BC" },
+  { icon: ShieldCheck, title: "Compliance as Code", desc: "SOC2, ISO 27001, HIPAA, GDPR reports auto-generated from chain evidence. Live compliance scoring. Verifiable Credentials (W3C).", color: "#4CAF50" },
+  { icon: Zap, title: "Quantum Cloud", desc: "Origin Wukong 72-qubit quantum processor integration. Quantum random numbers. Quantum-attested Merkle roots. Hardware entropy.", color: "#AB47BC" },
+  { icon: Lock, title: "Zero-Trust by Default", desc: "Anomaly detection, RBAC, secret scanning, input shielding, SSRF guard, intent guard. Every security event logged to chain.", color: "#EF5350" },
 ];
 
 const FAQS = [
@@ -63,9 +63,7 @@ export default function LandingPage() {
       <nav className="fixed top-0 w-full z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-brand/15 border border-brand/25 flex items-center justify-center">
-              <Globe className="w-4 h-4 text-brand" />
-            </div>
+            <img src="/logo.svg" alt="Sovereignly" className="w-7 h-7 drop-shadow-[0_0_6px_rgba(76,175,80,0.3)]" />
             <span className="font-semibold text-sm tracking-wide">Sovereignly</span>
           </div>
           <div className="hidden md:flex items-center gap-6 text-sm text-text-secondary">
@@ -91,7 +89,7 @@ export default function LandingPage() {
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
             Every execution<br />
-            <span className="bg-gradient-to-r from-white via-brand to-brand bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#4CAF50] via-[#42A5F5] to-[#AB47BC] bg-clip-text text-transparent">
               cryptographically proven.
             </span>
           </h1>
@@ -101,7 +99,7 @@ export default function LandingPage() {
             Open-core. Post-quantum. Self-hostable.
           </p>
           <div className="flex items-center justify-center gap-4 mb-12">
-            <Link href="/signup" className="px-6 py-3 rounded-xl bg-brand text-background font-medium hover:bg-brand-bright transition-all hover:shadow-[0_0_30px_rgba(13,242,59,0.3)]">
+            <Link href="/signup" className="px-6 py-3 rounded-xl bg-brand text-background font-medium hover:bg-brand-bright transition-all hover:shadow-[0_0_30px_rgba(76,175,80,0.4)]">
               Start Free <ArrowRight className="w-4 h-4 inline ml-1" />
             </Link>
             <a href="https://github.com/Metacognixion-labs/Sovereignly" target="_blank"
@@ -267,7 +265,7 @@ export default function LandingPage() {
             <span>npx create-sovereignly@latest</span>
           </div>
           <div className="flex items-center justify-center gap-4">
-            <Link href="/signup" className="px-8 py-3 rounded-xl bg-brand text-background font-medium hover:bg-brand-bright transition-all hover:shadow-[0_0_30px_rgba(13,242,59,0.3)]">
+            <Link href="/signup" className="px-8 py-3 rounded-xl bg-brand text-background font-medium hover:bg-brand-bright transition-all hover:shadow-[0_0_30px_rgba(76,175,80,0.4)]">
               Start Free <ArrowRight className="w-4 h-4 inline ml-1" />
             </Link>
           </div>
@@ -278,7 +276,7 @@ export default function LandingPage() {
       <footer className="border-t border-border py-10 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4 text-brand" />
+            <img src="/logo.svg" alt="" className="w-5 h-5" />
             <span className="text-sm font-medium">Sovereignly</span>
             <span className="text-xs text-text-muted">by MetaCognixion</span>
           </div>
