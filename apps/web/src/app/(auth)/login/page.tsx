@@ -10,7 +10,7 @@ import { toast } from "sonner";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [step, setStep] = useState<"email" | "code" | "token">("email");
   const [code, setCode] = useState("");
   const { setJwtToken, setAdminToken, endpoint } = useStore();
   const router = useRouter();
