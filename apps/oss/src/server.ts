@@ -206,17 +206,24 @@ app.post("/_sovereign/sdk/events", async (c) => {
   return c.json({ results });
 });
 
-// Landing page: point to OSS docs
-app.get("/", (c) => c.json({
-  name: "Sovereignly",
-  version: "4.0.0",
-  edition: "oss",
-  license: "MIT",
-  docs: "/_sovereign/health",
-  chain: "/_sovereign/chain/stats",
-  github: "https://github.com/Metacognixion-labs/Sovereignly",
-  cloud: "https://sovereignly.io",
-}));
+// Landing page: redirect browsers to dashboard, return JSON for API clients
+app.get("/", (c) => {
+  const accept = c.req.header("accept") ?? "";
+  if (accept.includes("text/html")) {
+    return c.redirect("/_sovereign/dashboard");
+  }
+  return c.json({
+    name: "Sovereignly",
+    version: "4.0.0",
+    edition: "oss",
+    license: "MIT",
+    dashboard: "/_sovereign/dashboard",
+    docs: "/_sovereign/health",
+    chain: "/_sovereign/chain/stats",
+    github: "https://github.com/Metacognixion-labs/Sovereignly",
+    cloud: "https://sovereignly.io",
+  });
+});
 
 // Serve dashboard HTML (before function dispatcher catch-all)
 import { existsSync, readFileSync } from "node:fs";
