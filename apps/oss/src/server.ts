@@ -44,6 +44,8 @@ import { GamificationEngine }       from "./ecosystem/gamification.ts";
 import { registerEcosystemRoutes }  from "./ecosystem/routes.ts";
 import { tracingMiddleware, prometheusHandler, log } from "./observability/index.ts";
 import { CAEPReceiver, registerCAEPRoutes } from "./auth/caep.ts";
+import { MagicLinkService }     from "./auth/magic-link.ts";
+import { createEmailTransport } from "./auth/email-transport.ts";
 import { CredentialExchange, registerCXPRoutes } from "./auth/credential-exchange.ts";
 import { VCIssuer, registerVCRoutes } from "./identity/vc.ts";
 import { ComplianceEvaluator } from "./policies/compliance-rules.ts";
@@ -127,6 +129,15 @@ const passkeys = new PasskeyEngine({
   origin:  APP_URL,
 });
 
+// Magic link (email sign-in)
+const emailTransport = createEmailTransport();
+const magicLink = new MagicLinkService({
+  dataDir:        `${DATA_DIR}/platform`,
+  emailTransport,
+  signingKey:     JWT_SECRET,
+  appUrl:         APP_URL,
+});
+
 //  4. Services 
 
 const kv       = new SovereignKV({ dataDir: `${DATA_DIR}/platform` });
@@ -183,7 +194,7 @@ app.use("*", tracingMiddleware());
 app.get("/_sovereign/prometheus", (c) => prometheusHandler(c));
 
 registerChainRoutes(app, chain, null, { adminToken: ADMIN_TOKEN, jwtSecret: JWT_SECRET });
-registerAuthRoutes(app, passkeys, oauthBroker, chain, { jwtSecret: JWT_SECRET, adminToken: ADMIN_TOKEN, appUrl: APP_URL });
+registerAuthRoutes(app, passkeys, oauthBroker, chain, { jwtSecret: JWT_SECRET, adminToken: ADMIN_TOKEN, appUrl: APP_URL }, undefined, magicLink);
 registerCAEPRoutes(app, caepReceiver, { adminToken: ADMIN_TOKEN, appUrl: APP_URL });
 
 // Verifiable Credentials + Credential Exchange
@@ -281,7 +292,7 @@ async function shutdown() {
   await chain.flush();
   complianceEvaluator.stop();
   server.stop(true); scheduler.stop(); runtime.shutdown(); workflowEngine.close(); agentRuntime.close(); gamification.close();
-  kv.close(); storage.close(); chain.close();
+  kv.close(); storage.close(); chain.close(); magicLink.close();
   process.exit(0);
 }
 

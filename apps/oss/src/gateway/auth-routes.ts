@@ -41,6 +41,7 @@ import { generateNonce, verifySIWE } from "../auth/siwe.ts";
 import { generateSolanaNonce, verifySolanaSignature } from "../auth/solana.ts";
 import { issueJWT, verifyJWT, revokeToken }  from "../security/zero-trust.ts";
 import type { SovereignChain }  from "../security/chain.ts";
+import type { MagicLinkService } from "../auth/magic-link.ts";
 
 // Short-lived auth code store for OAuth callback (code exchange pattern)
 const authCodes = new Map<string, { token: string; expiresAt: number }>();
@@ -153,6 +154,42 @@ class UserStore {
     return user;
   }
 
+  upsertFromMagicLink(email: string): SovereignUser {
+    const normalized = email.trim().toLowerCase();
+    const id  = `usr_ml_${normalized.replace(/[^a-z0-9]/g,"").slice(0,20)}`;
+    const now = Date.now();
+    // Check if user exists by email (may have been created via OAuth with same email)
+    const byEmail = this.db.prepare("SELECT * FROM users WHERE email=? LIMIT 1").get(normalized) as any;
+    if (byEmail) {
+      this.db.prepare("UPDATE users SET last_seen_at=? WHERE id=?").run(now, byEmail.id);
+      const methods: string[] = (() => { try { return JSON.parse(byEmail.auth_methods ?? "[]"); } catch { return []; } })();
+      if (!methods.includes("magic_link")) {
+        methods.push("magic_link");
+        this.db.prepare("UPDATE users SET auth_methods=? WHERE id=?").run(JSON.stringify(methods), byEmail.id);
+      }
+      return this.row({ ...byEmail, last_seen_at: now });
+    }
+    // Check by magic link user id
+    const existing = this.get(id);
+    if (existing) {
+      this.db.prepare("UPDATE users SET last_seen_at=? WHERE id=?").run(now, id);
+      return { ...existing, lastSeenAt: now };
+    }
+    const user: SovereignUser = {
+      id, email: normalized,
+      displayName: normalized.split("@")[0],
+      role: "deployer", plan: "free",
+      authMethods: ["magic_link"],
+      createdAt: now, lastSeenAt: now,
+    };
+    this.db.prepare(`
+      INSERT INTO users (id,email,display_name,role,plan,auth_methods,created_at,last_seen_at)
+      VALUES (?,?,?,?,?,?,?,?)
+    `).run(id, user.email, user.displayName, user.role, user.plan,
+           JSON.stringify(user.authMethods), now, now);
+    return user;
+  }
+
   upsertFromWallet(address: string, chain: "evm" | "solana"): SovereignUser {
     const col     = chain === "evm" ? "evm_address" : "solana_address";
     const id      = `usr_${chain}_${address.slice(2,10).toLowerCase()}`;
@@ -224,6 +261,7 @@ export function registerAuthRoutes(
   chain:    SovereignChain,
   cfg: { jwtSecret: string; adminToken?: string; appUrl: string; dataDir?: string },
   totpService?: import("../auth/totp.ts").TOTPService,
+  magicLink?: MagicLinkService,
 ) {
   const dataDir = cfg.dataDir ?? "./data/platform";
   const users   = new UserStore(dataDir);
@@ -502,6 +540,77 @@ export function registerAuthRoutes(
     const result = await totpService.regenerateBackupCodes(payload.sub, body.code);
     if (!result.ok) return c.json({ error: result.error }, 400);
     return c.json({ ok: true, backupCodes: result.backupCodes });
+  });
+
+  // ── MAGIC LINK SIGNIN ──────────────────────────────────────────────────────
+
+  //  SIGNIN  Request code (email login)
+  app.post("/_sovereign/signin", async (c) => {
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
+    const email = body.email?.trim()?.toLowerCase();
+    if (!email) return c.json({ error: "email required" }, 400);
+
+    if (!magicLink) {
+      // Fallback: if no magic link service, check if this is an admin using token
+      return c.json({ error: "Email sign-in not configured. Use OAuth, passkeys, or admin token." }, 503);
+    }
+
+    const result = await magicLink.requestCode(email, "signin");
+    if (!result.ok) return c.json({ error: result.error }, 429);
+
+    void chain.emit("AUTH_ATTEMPT", { method: "magic_link", email, ip: clientIP(c) }, "LOW");
+    return c.json({ requiresCode: true });
+  });
+
+  //  SIGNIN  Verify code
+  app.post("/_sovereign/signin/verify", async (c) => {
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
+    const email = body.email?.trim()?.toLowerCase();
+    const code  = body.code?.trim();
+    if (!email || !code) return c.json({ error: "email and code required" }, 400);
+
+    if (!magicLink) {
+      return c.json({ error: "Email sign-in not configured" }, 503);
+    }
+
+    const result = await magicLink.verifyCode(email, code, "signin");
+    if (!result.valid) {
+      void chain.emit("AUTH_FAILURE", { method: "magic_link", email, reason: result.error, ip: clientIP(c) }, "MEDIUM");
+      return c.json({ error: result.error }, 401);
+    }
+
+    // Code valid — upsert user and issue JWT
+    const user  = users.upsertFromMagicLink(email);
+    const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
+    void chain.emit("AUTH_SUCCESS", { userId: user.id, method: "magic_link", ip: clientIP(c) }, "LOW");
+    return c.json({ token, user });
+  });
+
+  //  MAGIC LINK  One-click verify (from email link)
+  app.get("/_sovereign/auth/magic", async (c) => {
+    const { token, email, purpose } = c.req.query();
+    if (!token || !email) return c.json({ error: "token and email required" }, 400);
+
+    if (!magicLink) {
+      return c.json({ error: "Magic link sign-in not configured" }, 503);
+    }
+
+    const result = await magicLink.verifyMagicToken(token, email, (purpose as "signin" | "signup") ?? "signin");
+    if (!result.valid) {
+      void chain.emit("AUTH_FAILURE", { method: "magic_link_click", email, reason: result.error, ip: clientIP(c) }, "MEDIUM");
+      return c.redirect(`${cfg.appUrl}/login?error=${encodeURIComponent(result.error ?? "Invalid link")}`);
+    }
+
+    const user = users.upsertFromMagicLink(email);
+    const jwt  = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
+    void chain.emit("AUTH_SUCCESS", { userId: user.id, method: "magic_link_click", ip: clientIP(c) }, "LOW");
+
+    // Use auth code exchange pattern (same as OAuth callback)
+    const authCode = crypto.randomUUID();
+    authCodes.set(authCode, { token: jwt, expiresAt: Date.now() + 30_000 });
+    return c.redirect(`${cfg.appUrl}/overview?sovereign_code=${authCode}`);
   });
 
   //  PORTAL PAGE
