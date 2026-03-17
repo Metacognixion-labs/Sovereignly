@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Blocks, Link2, ShieldCheck, ScrollText,
   Database, Settings, Activity, Coins, Cpu, Globe,
   Search, ChevronRight, Atom, Plus, FolderGit2,
+  User, CreditCard, Users, Key,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
@@ -27,6 +28,12 @@ const NAV = [
 
   { section: "Observability" },
   { label: "Logs",        href: "/logs",       icon: ScrollText },
+
+  { section: "Account" },
+  { label: "Profile & 2FA", href: "/account",   icon: User },
+  { label: "Billing",      href: "/billing",    icon: CreditCard },
+  { label: "Team",         href: "/team",       icon: Users },
+  { label: "API Keys",     href: "/api-keys",   icon: Key },
 
   { section: "System" },
   { label: "Settings",    href: "/settings",   icon: Settings },
