@@ -1,0 +1,11 @@
+{
+  "/(dashboard)/chain/page": "app/(dashboard)/chain/page.js",
+  "/(dashboard)/compliance/page": "app/(dashboard)/compliance/page.js",
+  "/(dashboard)/functions/page": "app/(dashboard)/functions/page.js",
+  "/(dashboard)/kv/page": "app/(dashboard)/kv/page.js",
+  "/(dashboard)/logs/page": "app/(dashboard)/logs/page.js",
+  "/(dashboard)/overview/page": "app/(dashboard)/overview/page.js",
+  "/(dashboard)/settings/page": "app/(dashboard)/settings/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/page": "app/page.js"
+}

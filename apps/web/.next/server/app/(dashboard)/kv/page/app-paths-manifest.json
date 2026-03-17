@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/kv/page": "app/(dashboard)/kv/page.js"
+}
