@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import {
   GitBranch, Globe, ArrowRight, ArrowLeft, Loader2, CheckCircle,
   Terminal, Blocks, Database, Lock, Zap, Rocket, ExternalLink,
-  FolderGit2, Settings2, Play,
+  FolderGit2, Settings2, Play, ShieldCheck, Atom,
 } from "lucide-react";
 import Link from "next/link";
 
