@@ -218,6 +218,15 @@ app.get("/", (c) => c.json({
   cloud: "https://sovereignly.io",
 }));
 
+// Serve dashboard HTML (before function dispatcher catch-all)
+import { existsSync, readFileSync } from "node:fs";
+const dashboardPath = `${import.meta.dir}/../../../dashboard/index.html`;
+if (existsSync(dashboardPath)) {
+  const dashboardHtml = readFileSync(dashboardPath, "utf-8");
+  app.get("/_sovereign/dashboard", (c) => c.html(dashboardHtml));
+  app.get("/_sovereign/dashboard/*", (c) => c.html(dashboardHtml));
+}
+
 //  Function dispatcher LAST
 registerFunctionDispatcher(app, runtime, {
   metrics, cache, limiter,
