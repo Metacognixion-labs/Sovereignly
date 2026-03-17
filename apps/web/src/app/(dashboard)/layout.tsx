@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Blocks, Link2, ShieldCheck, ScrollText,
   Database, Settings, Activity, Coins, Cpu, Globe,
   Search, ChevronRight, Atom, Plus, FolderGit2,
-  User, CreditCard, Users, Key, Building2, Crown, Server, Coins,
+  User, CreditCard, Users, Key, Building2, Crown, Server,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
