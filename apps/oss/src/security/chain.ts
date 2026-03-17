@@ -49,7 +49,12 @@ export type AuditEventType =
   | "NODE_JOIN"
   | "NODE_LEAVE"
   | "CHAIN_GENESIS"
-  | "MERIDIAN_ANCHOR";
+  | "MERIDIAN_ANCHOR"
+  | "DATA_READ"
+  | "DATA_EXPORT"
+  | "SESSION_END"
+  | "MFA_CHALLENGE"
+  | "PERMISSION_CHANGE";
 
 export interface AuditEvent {
   id:        string;           // UUID
@@ -547,7 +552,7 @@ export class SovereignChain {
 
     const rows = this.db.prepare(`
       SELECT * FROM events ${where} ORDER BY ts DESC LIMIT ?
-    `).all(...params, limit) as any[];
+    `).all(...(params as any[]), limit) as any[];
 
     return rows.map(r => ({
       ...r,
@@ -572,7 +577,7 @@ export class SovereignChain {
     }
     sql += " ORDER BY idx DESC LIMIT ? OFFSET ?";
     params.push(limit, offset);
-    return (this.db.prepare(sql).all(...params) as any[]).map(row => ({
+    return (this.db.prepare(sql).all(...(params as any[])) as any[]).map(row => ({
       index:      row.idx,
       ts:         row.ts,
       prevHash:   row.prev_hash,
@@ -580,8 +585,10 @@ export class SovereignChain {
       merkleRoot: row.merkle_root,
       eventCount: row.event_count,
       nodeId:     row.node_id,
+      signature:  row.signature ?? "",
+      acks:       row.acks ? JSON.parse(row.acks) : [],
       anchored:   row.anchored_at !== null,
-    }));
+    } as Block));
   }
 
   getStats() {
@@ -630,8 +637,11 @@ export class SovereignChain {
     try {
       const { encryptAES } = await import("./crypto.ts");
       return "enc:" + await encryptAES(plain, this.cfg.encKey);
-    } catch {
-      return plain; // encryption failure is non-fatal  payload stored as plaintext
+    } catch (err) {
+      // Encryption was configured but failed — this is a security violation.
+      // Log critical warning and throw rather than silently storing plaintext.
+      console.error("[CRITICAL] Payload encryption failed — refusing to store plaintext when encryption is configured:", err);
+      throw new Error("Encryption failed: refusing to store unencrypted payload when encryption key is configured");
     }
   }
 

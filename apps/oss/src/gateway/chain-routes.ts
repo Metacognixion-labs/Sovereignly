@@ -18,7 +18,16 @@ export function registerChainRoutes(
   cfg:        { adminToken?: string; jwtSecret: string }
 ) {
 
-  //  Auth: issue JWT 
+  // Auth guard: require admin token or valid JWT for sensitive endpoints
+  function requireAuth(c: any): boolean {
+    const token = c.req.header("x-sovereign-token") ?? "";
+    if (cfg.adminToken && timingSafeEqual(token, cfg.adminToken)) return true;
+    // Also accept if authenticated via zero-trust middleware
+    if (c.get("authenticated")) return true;
+    return false;
+  }
+
+  //  Auth: issue JWT
 
   app.post("/_sovereign/auth/token", async (c) => {
     const body = await c.req.json().catch(() => ({}));
@@ -54,6 +63,7 @@ export function registerChainRoutes(
   });
 
   app.get("/_sovereign/chain/events", (c) => {
+    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
     const { type, severity, since, limit } = c.req.query();
     const events = chain.getEvents({
       type:     type as any,
@@ -65,6 +75,7 @@ export function registerChainRoutes(
   });
 
   app.get("/_sovereign/chain/blocks", (c) => {
+    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
     const { limit, offset, since } = c.req.query();
     const blocks = chain.getBlocks({
       limit:  parseInt(limit ?? "20"),
@@ -74,9 +85,10 @@ export function registerChainRoutes(
     return c.json({ count: blocks.length, blocks });
   });
 
-  //  Peer replication 
+  //  Peer replication
 
   app.post("/_sovereign/chain/block", async (c) => {
+    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
     const block = await c.req.json();
     const result = await chain.ingestPeerBlock(block);
     return c.json(result, result.ok ? 200 : 400);

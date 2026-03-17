@@ -149,7 +149,7 @@ interface PooledWorker {
 
 export class WorkerPool {
   private workers: PooledWorker[] = [];
-  private queue: Array<{ resolve: Function; reject: Function; task: any }> = [];
+  private queue: Array<{ resolve: (v: InvokeResponse) => void; reject: (e: unknown) => void; task: any }> = [];
   private pendingResults = new Map<string, { resolve: Function; reject: Function; timer: Timer }>();
   private workerIdCounter = 0;
 

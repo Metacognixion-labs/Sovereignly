@@ -337,7 +337,7 @@ export class PasskeyEngine {
       const clientData = JSON.parse(new TextDecoder().decode(b64urlDecode(opts.clientDataJSON)));
       if (clientData.type !== "webauthn.create") return { ok: false, reason: "wrong type" };
       if (clientData.challenge !== opts.challenge) return { ok: false, reason: "challenge mismatch" };
-      if (!clientData.origin.startsWith(this.origin)) return { ok: false, reason: "origin mismatch" };
+      if (clientData.origin !== this.origin) return { ok: false, reason: "origin mismatch" };
 
       // 3. Decode attestation object (CBOR)
       const attObj = cborDecode(b64urlDecode(opts.attestationObject));
@@ -467,7 +467,7 @@ export class PasskeyEngine {
       );
       if (clientData.type !== "webauthn.get")    return { ok: false, reason: "wrong type" };
       if (clientData.challenge !== opts.challenge) return { ok: false, reason: "challenge mismatch" };
-      if (!clientData.origin.startsWith(this.origin)) return { ok: false, reason: "origin mismatch" };
+      if (clientData.origin !== this.origin) return { ok: false, reason: "origin mismatch" };
 
       // 4. Parse authenticator data
       const authData = b64urlDecode(opts.authenticatorData);
@@ -498,7 +498,7 @@ export class PasskeyEngine {
       signedData.set(authData, 0);
       signedData.set(clientDataHash, authData.length);
 
-      let jwk: JsonWebKey; try { jwk = JSON.parse(row.public_key_jwk); } catch { return { valid: false, reason: "corrupt key data" }; }
+      let jwk: JsonWebKey; try { jwk = JSON.parse(row.public_key_jwk); } catch { return { ok: false, reason: "corrupt key data" }; }
       const publicKey = await importPublicKey(jwk);
       const sigBytes  = b64urlDecode(opts.signature);
 
@@ -509,7 +509,7 @@ export class PasskeyEngine {
       else if (jwk.alg === "RS256")  algorithm = { name: "RSASSA-PKCS1-v1_5" };
       else throw new Error(`Unknown algorithm: ${jwk.alg}`);
 
-      const valid = await crypto.subtle.verify(algorithm, publicKey, sigBytes, signedData);
+      const valid = await crypto.subtle.verify(algorithm, publicKey, sigBytes as unknown as BufferSource, signedData as unknown as BufferSource);
       if (!valid) return { ok: false, reason: "signature invalid" };
 
       // 7. Update counter

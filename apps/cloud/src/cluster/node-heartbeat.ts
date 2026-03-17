@@ -72,11 +72,13 @@ export class NodeHeartbeat {
   private buildPayload(): HeartbeatPayload {
     const uptime = Math.round((Date.now() - this.startTime) / 1000);
 
-    // Approximate CPU load from event loop lag
+    // Approximate CPU load from RSS memory pressure (not heap ratio, which
+    // reports ~1.0 on Bun's small initial heap and triggers false anomalies)
     let load = 0;
     try {
       const mem = process.memoryUsage();
-      load = Number((mem.heapUsed / mem.heapTotal).toFixed(3));
+      // Use RSS as fraction of a reasonable ceiling (512MB) — capped at 0.95
+      load = Math.min(0.95, Number((mem.rss / (512 * 1024 * 1024)).toFixed(3)));
     } catch { load = 0; }
 
     return {

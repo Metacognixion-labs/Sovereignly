@@ -151,7 +151,7 @@ export class EventBus {
     let results = this.orderedHistory();
     if (opts.type)     results = results.filter(e => e.type === opts.type);
     if (opts.tenantId) results = results.filter(e => e.tenantId === opts.tenantId);
-    if (opts.since)    results = results.filter(e => e.ts >= opts.since);
+    if (opts.since)    results = results.filter(e => e.ts >= opts.since!);
     return results.slice(-(opts.limit ?? 100));
   }
 

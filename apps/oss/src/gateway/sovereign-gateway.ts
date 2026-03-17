@@ -181,7 +181,7 @@ export class SovereignGateway {
 
     // Proxy to upstream
     const response = await this.proxy(c, route.upstream, route, {
-      userId, orgId, ip, ...authCtx,
+      userId: userId ?? "", orgId: orgId ?? "", ip, ...authCtx,
     });
 
     // Audit log
@@ -240,7 +240,7 @@ export class SovereignGateway {
 
       case "admin": {
         const token = this.extractBearer(c) ?? c.req.header("x-sovereign-token");
-        if (this.cfg.adminToken && timingSafeEqual(token, this.cfg.adminToken)) return { ok: true, context: { "x-sovereign-admin": "1" } };
+        if (this.cfg.adminToken && timingSafeEqual(token ?? "", this.cfg.adminToken)) return { ok: true, context: { "x-sovereign-admin": "1" } };
         const { valid, payload } = token
           ? await verifyJWT(token, this.cfg.jwtSecret)
           : { valid: false, payload: null };

@@ -570,6 +570,9 @@ pointer-events:none;z-index:0}
 <div class="toasts" id="toasts"></div>
 
 <script>
+// HTML entity escaping to prevent XSS from server data
+function esc(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
+
 // Auto-detect base URL: use relative paths in production, localhost in dev
 let URL_BASE = localStorage.getItem('sc_url') || (location.hostname === 'localhost' ? 'http://localhost:8787' : '');
 // Support both admin token (sc_token) and JWT from signup (sovereign_token)
@@ -637,10 +640,10 @@ async function refresh() {
 
   // Runtime info
   document.getElementById('runtime-info').innerHTML = `
-    <div><span style="color:var(--cyan)">Runtime:</span>  Bun ${data.bunVersion ?? '?'}</div>
-    <div><span style="color:var(--cyan)">Node ID:</span>  ${data.node ?? '?'}</div>
-    <div><span style="color:var(--cyan)">Cache:</span>    ${data.cache?.size ?? 0} entries</div>
-    <div><span style="color:var(--cyan)">KV Namespaces:</span> ${(data.kv ?? []).length}</div>
+    <div><span style="color:var(--cyan)">Runtime:</span>  Bun ${esc(data.bunVersion ?? '?')}</div>
+    <div><span style="color:var(--cyan)">Node ID:</span>  ${esc(data.node ?? '?')}</div>
+    <div><span style="color:var(--cyan)">Cache:</span>    ${esc(data.cache?.size ?? 0)} entries</div>
+    <div><span style="color:var(--cyan)">KV Namespaces:</span> ${esc((data.kv ?? []).length)}</div>
   `;
 
   // Live endpoints
@@ -656,9 +659,9 @@ async function loadEndpoints() {
   el.innerHTML = data.slice(0, 6).map(fn => `
     <div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
       <span class="hdot ${fn.errors > 0 ? 'warn' : 'ok'}"></span>
-      <span style="font-family:var(--mono);font-size:11px;color:var(--cyan);flex:1">${fn.route}</span>
-      <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${fn.methods?.join('|')}</span>
-      <span style="font-family:var(--mono);font-size:10px;color:var(--amber);margin-left:12px">${(fn.avgMs||0).toFixed(1)}ms avg</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--cyan);flex:1">${esc(fn.route)}</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${esc(fn.methods?.join('|'))}</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--amber);margin-left:12px">${esc((fn.avgMs||0).toFixed(1))}ms avg</span>
     </div>
   `).join('');
 }
@@ -688,16 +691,16 @@ async function loadFns() {
   if (!data.length) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No functions deployed</td></tr>'; return; }
   tbody.innerHTML = data.map(fn => `
     <tr>
-      <td class="fn-id">${fn.id}</td>
-      <td class="fn-route">${fn.route}</td>
-      <td>${(fn.methods||[]).map(m=>`<span class="badge ${m}">${m}</span>`).join('')}</td>
-      <td style="font-family:var(--mono);font-size:11px">${fmt(fn.invocations||0)}</td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--amber)">${(fn.avgMs||0).toFixed(1)}ms</td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--violet)">${(fn.p95Ms||0).toFixed(1)}ms</td>
-      <td><span class="hdot ${(fn.errors||0)>0?'warn':'ok'}"></span><span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${(fn.errors||0)>0?fn.errors+' err':'ok'}</span></td>
+      <td class="fn-id">${esc(fn.id)}</td>
+      <td class="fn-route">${esc(fn.route)}</td>
+      <td>${(fn.methods||[]).map(m=>`<span class="badge ${esc(m)}">${esc(m)}</span>`).join('')}</td>
+      <td style="font-family:var(--mono);font-size:11px">${esc(fmt(fn.invocations||0))}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--amber)">${esc((fn.avgMs||0).toFixed(1))}ms</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--violet)">${esc((fn.p95Ms||0).toFixed(1))}ms</td>
+      <td><span class="hdot ${(fn.errors||0)>0?'warn':'ok'}"></span><span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${(fn.errors||0)>0?esc(fn.errors)+' err':'ok'}</span></td>
       <td>
-        <button class="btn" style="padding:3px 8px;font-size:10px" onclick="testFn('${fn.route}')">Test</button>
-        <button class="btn btn-danger" style="padding:3px 8px;font-size:10px;margin-left:4px" onclick="deleteFn('${fn.id}')">Del</button>
+        <button class="btn" style="padding:3px 8px;font-size:10px" onclick="testFn('${esc(fn.route)}')">Test</button>
+        <button class="btn btn-danger" style="padding:3px 8px;font-size:10px;margin-left:4px" onclick="deleteFn('${esc(fn.id)}')">Del</button>
       </td>
     </tr>
   `).join('');
@@ -722,8 +725,8 @@ async function loadKV() {
   document.getElementById('kv-size').textContent = (size / 1024).toFixed(1);
   document.getElementById('kv-ns-list').innerHTML = data.kv.map(ns =>
     `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
-      <span style="color:var(--cyan)">${ns.namespace}</span>
-      <span style="color:var(--muted);margin-left:12px">${ns.keyCount} keys · ${(ns.sizeBytes/1024).toFixed(1)}KB</span>
+      <span style="color:var(--cyan)">${esc(ns.namespace)}</span>
+      <span style="color:var(--muted);margin-left:12px">${esc(ns.keyCount)} keys · ${esc((ns.sizeBytes/1024).toFixed(1))}KB</span>
     </div>`
   ).join('') || '<div style="color:var(--muted)">No namespaces yet</div>';
 }
@@ -763,7 +766,7 @@ function addLog(level, msg) {
   const el = document.getElementById('logstream');
   const line = document.createElement('div');
   line.className = 'll';
-  line.innerHTML = `<span class="lts">${ts}</span><span class="l${level[0]}">${level.toUpperCase()}</span><span class="lm">${msg}</span>`;
+  line.innerHTML = `<span class="lts">${esc(ts)}</span><span class="l${esc(level[0])}">${esc(level.toUpperCase())}</span><span class="lm">${esc(msg)}</span>`;
   el.appendChild(line);
   if (following) el.scrollTop = el.scrollHeight;
   document.getElementById('log-ct').textContent = logs.length + ' entries';

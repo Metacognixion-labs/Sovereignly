@@ -63,7 +63,7 @@ Write-Host "  ✓ Committed" -ForegroundColor Green
 
 # Push
 Write-Host "  Pushing..." -ForegroundColor Gray
-git push -u origin main --force
+git push -u origin main
 Write-Host "  ✓ Pushed" -ForegroundColor Green
 
 # Tag

@@ -57,6 +57,7 @@ export function createPlatformGateway(cfg: Config, deps: {
   // Cluster
   nodeRegistry: any;
   clusterTopology: any;
+  nodeHeartbeat: any;
   globalAnchor: any;
   clusterBalancer: any;
   networkAnomalyDetector: any;
@@ -67,7 +68,19 @@ export function createPlatformGateway(cfg: Config, deps: {
   magicLink?: any;
   totpService?: any;
 }) {
-  const compliance = new ComplianceEngine(deps.chain);
+  const compliance = new ComplianceEngine(deps.chain, {
+    adminTokenSet:    !!cfg.adminToken,
+    tlsEnabled:       cfg.isProduction,
+    rateLimitEnabled: true,
+    rbacEnabled:      true,
+    encryptionAtRest: !!cfg.serverKey,
+    multiNode:        cfg.clusterPeers.length > 0,
+    meridianAnchored: cfg.anchorTier !== "free",
+    workerIsolation:  cfg.poolSize > 0,
+    auditLogging:     true,
+    nodeId:           cfg.nodeId,
+    version:          "4.0.0",
+  });
   const anomaly    = new AnomalyDetector(deps.chain);
   const zeroTrust  = createZeroTrustMiddleware({
     adminToken: cfg.adminToken,
@@ -84,7 +97,6 @@ export function createPlatformGateway(cfg: Config, deps: {
     adminToken: cfg.adminToken,
     enableCompression: cfg.isProduction,
     logLevel: cfg.logLevel,
-    zeroTrustMiddleware: zeroTrust,
     chain: deps.chain,
   });
 
@@ -118,10 +130,15 @@ export function createPlatformGateway(cfg: Config, deps: {
   // Cluster routes
   registerClusterRoutes(app, deps.nodeRegistry, deps.clusterTopology, { adminToken: cfg.adminToken });
 
-  // Edge event ingestion
+  // Edge event ingestion (requires cluster secret or admin token)
   app.post("/_sovereign/edge/events", async (c) => {
     const edgeNode = c.req.header("x-edge-node");
     if (!edgeNode) return c.json({ error: "x-edge-node header required" }, 400);
+
+    const authToken = c.req.header("x-cluster-secret") ?? c.req.header("x-sovereign-token") ?? "";
+    const isAuthed = (cfg.adminToken && timingSafeEqual(authToken, cfg.adminToken))
+      || (cfg.serverKey && timingSafeEqual(authToken, cfg.serverKey));
+    if (!isAuthed) return c.json({ error: "edge authentication required (x-cluster-secret or x-sovereign-token)" }, 401);
     const body = await c.req.json().catch(() => ({ events: [] }));
     if (!Array.isArray(body.events)) return c.json({ error: "events array required" }, 400);
 
@@ -144,6 +161,14 @@ export function createPlatformGateway(cfg: Config, deps: {
     if (!orgId || !apiKey) return c.json({ error: "x-org-id and Bearer API key required" }, 401);
     const ctx = await deps.tenantManager.get(orgId);
     if (!ctx) return c.json({ error: "org not found" }, 404);
+
+    // Verify API key: must match HMAC(serverKey, tenantId) or the admin token
+    const { hmac256 } = await import("../../../oss/src/security/crypto.ts");
+    const { timingSafeEqual } = await import("../../../oss/src/security/crypto.ts");
+    const expectedKey = await hmac256(cfg.serverKey, orgId);
+    const keyValid = timingSafeEqual(apiKey, expectedKey)
+      || (cfg.adminToken ? timingSafeEqual(apiKey, cfg.adminToken) : false);
+    if (!keyValid) return c.json({ error: "invalid API key" }, 401);
     const { events } = await c.req.json().catch(() => ({ events: [] }));
     if (!Array.isArray(events)) return c.json({ error: "events array required" }, 400);
 

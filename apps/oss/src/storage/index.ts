@@ -219,8 +219,24 @@ export class SovereignStorage {
 
   //  Helpers 
 
-  private bucketPath(bucket: string) { return join(this.basePath, "buckets", bucket); }
-  private objectPath(bucket: string, key: string) { return join(this.bucketPath(bucket), key); }
+  private bucketPath(bucket: string) {
+    const sanitized = bucket.replace(/[^a-zA-Z0-9._-]/g, "");
+    if (!sanitized || sanitized !== bucket) throw new Error(`Invalid bucket name: ${bucket}`);
+    return join(this.basePath, "buckets", sanitized);
+  }
+
+  private objectPath(bucket: string, key: string) {
+    if (!key || key.includes("..") || key.startsWith("/") || key.startsWith("\\")) {
+      throw new Error(`Invalid object key: path traversal detected`);
+    }
+    const resolved = join(this.bucketPath(bucket), key);
+    const bucketDir = this.bucketPath(bucket);
+    // Ensure resolved path is within bucket directory
+    if (!resolved.startsWith(bucketDir)) {
+      throw new Error(`Invalid object key: path traversal detected`);
+    }
+    return resolved;
+  }
 
   private ensureBucket(name: string) {
     const exists = this.db.prepare("SELECT 1 FROM buckets WHERE name = $name").get({ name });

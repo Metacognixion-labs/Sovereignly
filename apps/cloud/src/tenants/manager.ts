@@ -23,7 +23,8 @@
 
 import { Database }  from "bun:sqlite";
 import { mkdir, rm } from "node:fs/promises";
-import { join, existsSync } from "node:path";
+import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { encryptAES, decryptAES, sha256 } from "../../../oss/src/security/crypto.ts";
 import { SovereignChain }   from "../../../oss/src/security/chain.ts";
 import { OmnichainAnchor }  from "../../../oss/src/security/omnichain-anchor.ts";
@@ -300,7 +301,6 @@ export class TenantManager {
 
     const kv = new SovereignKV({
       dataDir: tenantDir,
-      encKey,
     });
     await kv.init();
 
@@ -342,7 +342,7 @@ export class TenantManager {
     }
 
     // Build Merkle root over all tenant tips
-    const { MerkleTree } = await import("../security/crypto.ts");
+    const { MerkleTree } = await import("../../../oss/src/security/crypto.ts");
     const leaves = tenantTips.map(t => `${t.tenantId}:${t.tip}`);
     const tree   = new MerkleTree(leaves);
     const root   = await tree.root();

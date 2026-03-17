@@ -18,16 +18,27 @@ export function registerClusterRoutes(
   app: Hono,
   nodeRegistry: NodeRegistry,
   clusterTopology: ClusterTopology,
-  opts: { adminToken?: string }
+  opts: { adminToken?: string; clusterSecret?: string }
 ) {
   function requireAdmin(c: any): boolean {
     const token = c.req.header("x-sovereign-token")?.replace("Bearer ", "");
     return !!opts.adminToken && timingSafeEqual(token ?? "", opts.adminToken);
   }
 
-  // -- Heartbeat endpoint (accepts heartbeats from any cluster node) --
+  function requireClusterAuth(c: any): boolean {
+    // Accept either cluster secret or admin token for heartbeats
+    const token = c.req.header("x-cluster-secret") ?? c.req.header("x-sovereign-token") ?? "";
+    if (opts.clusterSecret && timingSafeEqual(token, opts.clusterSecret)) return true;
+    if (opts.adminToken && timingSafeEqual(token, opts.adminToken)) return true;
+    return false;
+  }
+
+  // -- Heartbeat endpoint (requires cluster secret or admin token) --
 
   app.post("/_sovereign/control/heartbeat", async (c) => {
+    if (!requireClusterAuth(c)) {
+      return c.json({ error: "cluster authentication required (x-cluster-secret or x-sovereign-token header)" }, 401);
+    }
     try {
       const payload = await c.req.json();
       if (!payload.nodeId || !payload.region) {

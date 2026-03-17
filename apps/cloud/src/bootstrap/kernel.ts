@@ -27,7 +27,7 @@ export function createKernel(cfg: Config, chain: SovereignChain) {
   const policyEngine   = new PolicyEngine(eventBus);
 
   const workflowEngine = new WorkflowEngine(eventBus, policyEngine);
-  registerBuiltinWorkflows(workflowEngine);
+  registerBuiltinWorkflows(workflowEngine, eventBus);
   const agentRuntime   = new AgentRuntime(eventBus, policyEngine, workflowEngine);
   registerBuiltinAgents(agentRuntime);
 

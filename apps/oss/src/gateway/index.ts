@@ -169,7 +169,7 @@ export function createGateway(
   // Request ID
   app.use("*", async (c, next) => {
     const id = c.req.header("x-request-id") ?? crypto.randomUUID();
-    c.set("requestId", id);
+    (c as any).set("requestId", id);
     await next();
     c.header("x-request-id", id);
   });
@@ -274,7 +274,7 @@ export function createGateway(
 
   app.post("/_sovereign/functions", async (c) => {
     const token = c.req.header("x-sovereign-token");
-    if (config.adminToken && !timingSafeEqual(token, config.adminToken)) {
+    if (config.adminToken && !timingSafeEqual(token ?? "", config.adminToken)) {
       return c.json({ error: "Unauthorized" }, 401);
     }
     const body = await c.req.json();
@@ -300,7 +300,7 @@ export function createGateway(
 
   app.delete("/_sovereign/functions/:id", (c) => {
     const token = c.req.header("x-sovereign-token");
-    if (config.adminToken && !timingSafeEqual(token, config.adminToken)) {
+    if (config.adminToken && !timingSafeEqual(token ?? "", config.adminToken)) {
       return c.json({ error: "Unauthorized" }, 401);
     }
     const deleted = runtime.delete(c.req.param("id"));
@@ -466,6 +466,11 @@ export function startServer(
     port: cfg.port,
     hostname: cfg.host,
     fetch: app.fetch,
+    error(error) {
+      console.error("[Bun.serve] Unhandled fetch error:", error);
+      return new Response("Internal Server Error", { status: 500 });
+    },
+    idleTimeout: 30,
     // Bun-specific: WebSocket upgrade hook
     websocket: {
       message(ws, msg) { ws.send(msg); },

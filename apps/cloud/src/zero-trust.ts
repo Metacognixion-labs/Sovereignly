@@ -29,6 +29,7 @@ export type Role = "admin" | "deployer" | "reader" | "auditor" | "owner";
 
 export const PERMISSIONS: Record<Role, Set<string>> = {
   admin:    new Set(["*"]),
+  owner:    new Set(["functions:write", "functions:read", "kv:write", "kv:read", "metrics:read", "chain:read", "events:read", "tenant:manage", "billing:manage", "webhooks:manage"]),
   deployer: new Set(["functions:write", "functions:read", "kv:write", "kv:read"]),
   reader:   new Set(["functions:read", "kv:read", "metrics:read"]),
   auditor:  new Set(["metrics:read", "chain:read", "events:read"]),
@@ -336,14 +337,8 @@ export function createZeroTrustMiddleware(cfg: ZeroTrustConfig): MiddlewareHandl
       }
 
       // Legacy admin token (backwards compat)
-      if (!authenticated && cfg.adminToken) {
-        const valid = await hmac256Verify(
-          cfg.adminToken,
-          tokenHeader,
-          await hmac256(cfg.adminToken, tokenHeader)
-        ) || (cfg.adminToken ? timingSafeEqual(tokenHeader ?? '', cfg.adminToken) : false);
-
-        if (valid) {
+      if (!authenticated && cfg.adminToken && tokenHeader) {
+        if (timingSafeEqual(tokenHeader, cfg.adminToken)) {
           authenticated = true;
           role = "admin";
         }

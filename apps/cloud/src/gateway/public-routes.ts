@@ -465,7 +465,7 @@ document.getElementById('f3').addEventListener('submit',async e=>{
     return c.html(magicResultPage("Signed in!", "Redirecting to dashboard…", true, jwt, tenant.id));
   });
 
-  //  Signup form (GET  serves HTML form)
+  //  Signup form (GET — serves HTML form that POSTs to /_sovereign/signup)
   app.get("/_sovereign/signup", (c) => {
     return c.html(`<!DOCTYPE html>
 <html lang="en">
@@ -689,9 +689,27 @@ document.getElementById('f2').addEventListener('submit',async e=>{
         86400 * 30
       );
 
+      // Audit + user creation event (hash email for GDPR — PII must not be in immutable chain)
+      const { sha256 } = await import("../../../oss/src/security/crypto.ts");
+      const emailHash = await sha256(email.trim().toLowerCase());
       void chain.emit("CONFIG_CHANGE", {
-        event: "public_signup", tenantId: tenant.id, email: normalized, plan: "free", ip,
+        event:    "public_signup",
+        tenantId: tenant.id,
+        emailHash,
+        plan:     "free",
+        ip,
       }, "LOW");
+
+      // Emit user creation for the event bus (auth system can pick this up)
+      if (typeof (globalThis as any).__sovereignlyBus !== "undefined") {
+        void (globalThis as any).__sovereignlyBus.emit("TENANT_CREATED", {
+          tenantId: tenant.id,
+          userId:   email.trim().toLowerCase(),
+          name:     name.trim(),
+          plan:     "free",
+          method:   "public_signup",
+        }, { source: "public-signup", tenantId: tenant.id });
+      }
 
       return c.json({
         ok: true,
@@ -765,7 +783,7 @@ document.getElementById('f2').addEventListener('submit',async e=>{
 
     try {
       const session = await billing.createCheckoutSession({
-        tenantId: payload.tid,
+        tenantId: payload.tid!,
         userId:   payload.sub,
         plan,
         email:    payload.sub,
@@ -793,8 +811,8 @@ document.getElementById('f2').addEventListener('submit',async e=>{
     if (bearer) {
       const { valid, payload } = await verifyJWT(bearer, opts.jwtSecret);
       if (valid && payload) {
-        const meta = tenants.getTenantMeta(payload.tid);
-        const ctx  = meta ? await tenants.get(payload.tid) : null;
+        const meta = tenants.getTenantMeta(payload.tid!);
+        const ctx  = meta ? await tenants.get(payload.tid!) : null;
         const stats = ctx?.chain.getStats();
 
         return c.json({

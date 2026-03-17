@@ -381,14 +381,8 @@ export function createZeroTrustMiddleware(cfg: ZeroTrustConfig): MiddlewareHandl
       }
 
       // Legacy admin token (backwards compat)
-      if (!authenticated && cfg.adminToken) {
-        const valid = await hmac256Verify(
-          cfg.adminToken,
-          tokenHeader,
-          await hmac256(cfg.adminToken, tokenHeader)
-        ) || (cfg.adminToken ? timingSafeEqual(tokenHeader ?? '', cfg.adminToken) : false);
-
-        if (valid) {
+      if (!authenticated && cfg.adminToken && tokenHeader) {
+        if (timingSafeEqual(tokenHeader, cfg.adminToken)) {
           authenticated = true;
           role = "admin";
         }

@@ -82,7 +82,7 @@ export function registerWebhookRoutes(
 
     const list = await webhooks.list(ctx.kv);
     // Redact secrets in response
-    const safe = list.map(w => ({ ...w, secret: w.secret.slice(0, 8) + "..." }));
+    const safe = list.map(w => ({ ...w, secret: "..." + w.secret.slice(-4) }));
 
     return c.json({ count: safe.length, webhooks: safe });
   });

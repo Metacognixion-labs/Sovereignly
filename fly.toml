@@ -7,7 +7,7 @@ primary_region = "iad"
 [env]
   PORT             = "8787"
   NODE_ENV         = "production"
-  WORKER_POOL_SIZE = "2"
+  WORKER_POOL_SIZE = "0"
   LOG_LEVEL        = "minimal"
   ANCHOR_TIER      = "starter"
   NODE_ROLE        = "cluster"
@@ -34,9 +34,13 @@ primary_region = "iad"
     protocol     = "http"
     timeout      = "5s"
 
+[[restart]]
+  policy      = "on-failure"
+  max_retries = 5
+
 [[vm]]
   size   = "shared-cpu-1x"
-  memory = "1024mb"
+  memory = "2048mb"
 
 [[mounts]]
   source      = "sovereignly_data"

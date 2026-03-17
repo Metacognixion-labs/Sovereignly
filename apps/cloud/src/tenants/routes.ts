@@ -245,8 +245,13 @@ export function registerTenantRoutes(
     const ctx = await tenants.get(tenantId);
     if (!ctx) return c.json({ error: "unavailable" }, 503);
 
-    const { ComplianceEngine } = await import("../security/compliance.ts");
-    const compliance = new ComplianceEngine(ctx.chain);
+    const { ComplianceEngine } = await import("../compliance.ts");
+    const compliance = new ComplianceEngine(ctx.chain, {
+      adminTokenSet: true, tlsEnabled: true, rateLimitEnabled: true,
+      rbacEnabled: true, encryptionAtRest: true, multiNode: false,
+      meridianAnchored: true, workerIsolation: true, auditLogging: true,
+      nodeId: "tenant", version: "4.0.0",
+    });
 
     const { standard } = c.req.query();
     const report = compliance.generateReport(

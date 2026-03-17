@@ -3,7 +3,9 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "strict": false,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
@@ -14,5 +16,5 @@
       "@sovereignly/oss/*": ["./apps/oss/src/*"]
     }
   },
-  "include": ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts"]
+  "include": ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts", "packages/sdk/index.ts"]
 }

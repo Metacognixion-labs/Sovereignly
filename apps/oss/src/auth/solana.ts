@@ -157,14 +157,14 @@ export async function verifySolanaSignature(opts: {
 
     // Import Ed25519 public key using Web Crypto API (ZERO new dependencies)
     const key = await crypto.subtle.importKey(
-      "raw", publicKeyBytes,
+      "raw", publicKeyBytes as unknown as BufferSource,
       { name: "Ed25519" },
       false, ["verify"]
     );
 
     // Verify signature against the raw message bytes
     const messageBytes = new TextEncoder().encode(opts.message);
-    const valid = await crypto.subtle.verify("Ed25519", key, sigBytes, messageBytes);
+    const valid = await crypto.subtle.verify("Ed25519", key, sigBytes as unknown as BufferSource, messageBytes as unknown as BufferSource);
 
     if (!valid) return { valid: false, reason: "signature verification failed" };
 

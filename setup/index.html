@@ -1245,7 +1245,9 @@ function validateBasics() {
 
 function generateToken() {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  const token = 'sk-sovereign-' + Array.from({length:32}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+  const rng = new Uint32Array(32);
+  crypto.getRandomValues(rng);
+  const token = 'sk-sovereign-' + Array.from(rng, v => chars[v % chars.length]).join('');
   document.getElementById('cfg-token').value = token;
   document.getElementById('cfg-token').type = 'text';
   setTimeout(() => document.getElementById('cfg-token').type = 'password', 3000);

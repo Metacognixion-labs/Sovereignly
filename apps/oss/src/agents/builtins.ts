@@ -75,9 +75,11 @@ export const healthMonitorAgent: AgentDefinition = {
       for (const signal of obs.signals) {
         switch (signal.type) {
           case "high_anomaly_rate":
+            // Emit as CONFIG_CHANGE (not ANOMALY) to avoid re-triggering this
+            // agent which subscribes to ANOMALY — prevents infinite cascade
             actions.push({
               type: "emit_event",
-              params: { type: "ANOMALY", payload: { alert: "high_anomaly_rate", count: signal.value } },
+              params: { type: "CONFIG_CHANGE", payload: { alert: "high_anomaly_rate", count: signal.value } },
               reason: `${signal.value} anomalies in last 5 minutes`,
             });
             break;
@@ -93,7 +95,7 @@ export const healthMonitorAgent: AgentDefinition = {
           case "high_workflow_failure_rate":
             actions.push({
               type: "emit_event",
-              params: { type: "ANOMALY", payload: { alert: "workflow_failure_spike" } },
+              params: { type: "CONFIG_CHANGE", payload: { alert: "workflow_failure_spike" } },
               reason: "Workflow failure rate exceeds 10%",
             });
             break;

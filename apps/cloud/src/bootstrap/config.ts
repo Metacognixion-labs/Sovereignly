@@ -5,6 +5,22 @@
 
 import type { AnchorTier } from "@sovereignly/oss/security/omnichain-anchor";
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+if (IS_PRODUCTION && !process.env.JWT_SECRET) {
+  throw new Error("FATAL: JWT_SECRET must be set in production. Refusing to start with random secret.");
+}
+if (IS_PRODUCTION && !process.env.SOVEREIGN_SERVER_KEY) {
+  throw new Error("FATAL: SOVEREIGN_SERVER_KEY must be set in production. Refusing to start with random key.");
+}
+
+if (!process.env.JWT_SECRET) {
+  console.warn("[WARN] JWT_SECRET not set — generating ephemeral secret. All tokens will be invalidated on restart.");
+}
+if (!process.env.SOVEREIGN_SERVER_KEY) {
+  console.warn("[WARN] SOVEREIGN_SERVER_KEY not set — generating ephemeral key. Encrypted data will be unreadable after restart.");
+}
+
 export const config = {
   nodeId:      process.env.SOVEREIGN_NODE_ID   ?? "primary",
   port:        parseInt(process.env.PORT        ?? "8787"),
@@ -37,7 +53,7 @@ export const config = {
     ? `https://${process.env.SOVEREIGN_DOMAIN}`
     : `http://localhost:${parseInt(process.env.PORT ?? "8787")}`,
 
-  corsOrigins:    (process.env.CORS_ORIGINS ?? "*").split(","),
+  corsOrigins:    (process.env.CORS_ORIGINS ?? (IS_PRODUCTION ? (process.env.SOVEREIGN_DOMAIN ? `https://${process.env.SOVEREIGN_DOMAIN}` : "") : "*")).split(",").filter(Boolean),
   rateLimitPerMin: parseInt(process.env.RATE_LIMIT ?? "600"),
   logLevel:       (process.env.LOG_LEVEL ?? "minimal") as "minimal" | "verbose",
   isProduction:   process.env.NODE_ENV === "production",

@@ -47,6 +47,14 @@ import { registerTokenRoutes } from "./tokens/routes.ts";
 import { OriginQuantumCloud }  from "./quantum/origin-cloud.ts";
 import { registerQuantumRoutes } from "./quantum/routes.ts";
 
+// Global error handlers — prevent silent crashes
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled rejection:", reason);
+});
+
 //  Banner
 
 console.log(`
@@ -85,8 +93,8 @@ wireChainHooks(chain, tenantManager, webhookManager, config);
 const kv      = new SovereignKV({ dataDir: `${config.dataDir}/platform` });
 await kv.init();
 const storage = new SovereignStorage({ dataDir: `${config.dataDir}/platform` });
-const runtime = new SovereignRuntime(kv, config.poolSize);
-const scheduler = new SovereignScheduler(chain);
+const runtime = new SovereignRuntime(kv, { poolSize: config.poolSize });
+const scheduler = new SovereignScheduler(runtime);
 
 // 5. Kernel + workflows + agents + AI
 const kernel = createKernel(config, chain);
@@ -153,6 +161,23 @@ registerQuantumRoutes(app, quantumCloud, { adminToken: config.adminToken });
 //  Start
 
 const server = startServer(app, { port: config.port, host: config.host });
+
+// Self-health watchdog — exit if HTTP server stops responding so Fly can restart
+let _wdFails = 0;
+setInterval(async () => {
+  try {
+    const res = await fetch(`http://localhost:${config.port}/_sovereign/health`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) { _wdFails = 0; return; }
+  } catch {}
+  _wdFails++;
+  console.error(`[WATCHDOG] Self-health check failed (${_wdFails}/3)`);
+  if (_wdFails >= 3) {
+    console.error("[WATCHDOG] HTTP server unresponsive — exiting for restart");
+    process.exit(1);
+  }
+}, 15000);
 
 await chain.emit("NODE_JOIN", {
   nodeId: config.nodeId, version: "4.0.0", edition: "cloud",

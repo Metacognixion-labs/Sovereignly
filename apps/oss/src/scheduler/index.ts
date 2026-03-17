@@ -104,7 +104,7 @@ function nextOccurrence(expr: string, from = new Date()): Date {
 
 export class SovereignScheduler {
   private schedules = new Map<string, ScheduledFunction>();
-  private timer: Timer;
+  private timer!: Timer;
 
   constructor(private readonly runtime: SovereignRuntime) {
     // Check every minute at the top of the minute

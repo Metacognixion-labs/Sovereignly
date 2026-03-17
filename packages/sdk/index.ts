@@ -252,7 +252,14 @@ export class SovereignChain {
     ethereumAnchor?: string;
     healthy:         boolean;
   }> {
-    return this.request(`/v1/orgs/${this.cfg.orgId}/status`);
+    return this.request(`/v1/orgs/${this.cfg.orgId}/status`) as Promise<{
+      blockCount:      number;
+      eventCount:      number;
+      chainTip:        string;
+      meridianAnchor?: string;
+      ethereumAnchor?: string;
+      healthy:         boolean;
+    }>;
   }
 
   /**
@@ -274,7 +281,21 @@ export class SovereignChain {
       verifyAt?:  string;                    // easscan.org URL
     };
   }> {
-    return this.request(`/v1/events/${eventId}/proof?orgId=${this.cfg.orgId}`);
+    return this.request(`/v1/events/${eventId}/proof?orgId=${this.cfg.orgId}`) as Promise<{
+      exists:  boolean;
+      proof?:  { root: string; path: string[]; index: number };
+      anchor?: {
+        chains:   string[];
+        receipts: Array<{
+          chain:   string;
+          txHash?: string;
+          uid?:    string;
+          url?:    string;
+        }>;
+        schemaUID?: string;
+        verifyAt?:  string;
+      };
+    }>;
   }
 
   /**
@@ -286,7 +307,12 @@ export class SovereignChain {
     viewers: string[];
     chains:  Record<string, { desc: string; url: string }>;
   }> {
-    return this.request(`/chain/anchor/schema`);
+    return this.request(`/chain/anchor/schema`) as Promise<{
+      schema:  string;
+      uid:     string;
+      viewers: string[];
+      chains:  Record<string, { desc: string; url: string }>;
+    }>;
   }
 
   // -- Internal batch management ------------------------------------------------
@@ -317,7 +343,7 @@ export class SovereignChain {
       await this.sendImmediate(batch);
     } catch (err: any) {
       // Re-queue on failure (max 3 retries, then drop with onError)
-      if ((batch[0] as any).__retries < 3) {
+      if (((batch[0] as any).__retries ?? 0) < 3) {
         batch.forEach(e => { (e as any).__retries = ((e as any).__retries ?? 0) + 1; });
         this.queue.unshift(...batch);
       } else {
@@ -334,7 +360,7 @@ export class SovereignChain {
       body: JSON.stringify({ orgId: this.cfg.orgId, events }),
     });
     return (res as any).results ?? events.map((_: any, i: number) => ({
-      eventId:   `${Date.now()}-${i}`,
+      eventId:   typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}-${i}`,
       blockHint: 0,
       timestamp: Date.now(),
     }));

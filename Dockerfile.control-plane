@@ -12,6 +12,10 @@ RUN bun install --frozen-lockfile 2>/dev/null || bun install
 COPY packages/ packages/
 COPY apps/control-plane/ apps/control-plane/
 
+RUN addgroup --system sovereign && adduser --system --ingroup sovereign sovereign
+RUN chown -R sovereign:sovereign /app
+USER sovereign
+
 EXPOSE 9090
 
 CMD ["bun", "run", "--cwd", "apps/control-plane", "src/server.ts"]

@@ -334,6 +334,11 @@ export function registerBillingRoutes(
       return c.json({ error: "invalid plan" }, 400);
     }
 
+    // Verify JWT user owns or has admin access to this tenant
+    if (payload!.tid && payload!.tid !== tenantId && payload!.role !== "admin") {
+      return c.json({ error: "forbidden: token tenant does not match requested tenant" }, 403);
+    }
+
     try {
       const session = await billing.createCheckoutSession({
         tenantId, plan, email, userId: payload!.sub,
@@ -344,14 +349,17 @@ export function registerBillingRoutes(
     }
   });
 
-  //  Customer portal 
+  //  Customer portal
   app.post("/_sovereign/billing/portal", async (c) => {
     const token = c.req.header("authorization")?.slice(7);
     if (!token) return c.json({ error: "auth required" }, 401);
-    const { valid } = await verifyJWT(token, opts.jwtSecret);
-    if (!valid) return c.json({ error: "invalid token" }, 401);
+    const { valid, payload } = await verifyJWT(token, opts.jwtSecret);
+    if (!valid || !payload) return c.json({ error: "invalid token" }, 401);
 
     const { tenantId, returnUrl } = await c.req.json();
+    if (payload.tid && payload.tid !== tenantId && payload.role !== "admin") {
+      return c.json({ error: "forbidden: token tenant does not match requested tenant" }, 403);
+    }
     try {
       const portal = await billing.createPortalSession(tenantId, returnUrl);
       return c.json(portal);
@@ -360,14 +368,17 @@ export function registerBillingRoutes(
     }
   });
 
-  //  Subscription status 
+  //  Subscription status
   app.get("/_sovereign/billing/subscription/:tenantId", async (c) => {
     const token = c.req.header("authorization")?.slice(7);
     if (!token) return c.json({ error: "auth required" }, 401);
-    const { valid } = await verifyJWT(token, opts.jwtSecret);
-    if (!valid) return c.json({ error: "invalid token" }, 401);
+    const { valid, payload } = await verifyJWT(token, opts.jwtSecret);
+    if (!valid || !payload) return c.json({ error: "invalid token" }, 401);
 
     const tenantId = c.req.param("tenantId");
+    if (payload.tid && payload.tid !== tenantId && payload.role !== "admin") {
+      return c.json({ error: "forbidden: token tenant does not match requested tenant" }, 403);
+    }
     const sub      = await billing.getSubscription(tenantId);
     if (!sub) return c.json({ error: "not found" }, 404);
     return c.json(sub);

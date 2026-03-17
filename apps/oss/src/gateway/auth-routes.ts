@@ -42,6 +42,15 @@ import { generateSolanaNonce, verifySolanaSignature } from "../auth/solana.ts";
 import { issueJWT, verifyJWT, revokeToken }  from "../security/zero-trust.ts";
 import type { SovereignChain }  from "../security/chain.ts";
 
+// Short-lived auth code store for OAuth callback (code exchange pattern)
+const authCodes = new Map<string, { token: string; expiresAt: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, data] of authCodes) {
+    if (now > data.expiresAt) authCodes.delete(code);
+  }
+}, 30_000);
+
 //  User store 
 
 
@@ -295,11 +304,28 @@ export function registerAuthRoutes(
       const user  = users.upsertFromOAuth(profile);
       const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
       void chain.emit("AUTH_SUCCESS", { userId:user.id, method:`oauth_${provider}`, ip:clientIP(c) }, "LOW");
-      return c.redirect(`${cfg.appUrl}${redirectTo}#sovereign_token=${token}`);
+      // Use short-lived auth code exchange instead of putting token in URL fragment
+      const authCode = crypto.randomUUID();
+      authCodes.set(authCode, { token, expiresAt: Date.now() + 30_000 }); // 30s TTL
+      return c.redirect(`${cfg.appUrl}${redirectTo}?sovereign_code=${authCode}`);
     } catch (e: any) {
       void chain.emit("AUTH_FAILURE", { method:`oauth_${provider}`, reason:e.message, ip:clientIP(c) }, "MEDIUM");
       return c.redirect(`${cfg.appUrl}/_sovereign/auth?error=${encodeURIComponent(e.message)}`);
     }
+  });
+
+  //  AUTH CODE EXCHANGE (for OAuth callback security)
+  app.post("/_sovereign/auth/exchange", async (c) => {
+    const body = await c.req.json().catch(() => ({})) as any;
+    const code = body.code;
+    if (!code) return c.json({ error: "code required" }, 400);
+    const entry = authCodes.get(code);
+    if (!entry || Date.now() > entry.expiresAt) {
+      authCodes.delete(code);
+      return c.json({ error: "invalid or expired code" }, 401);
+    }
+    authCodes.delete(code); // single use
+    return c.json({ token: entry.token });
   });
 
   //  SIWE  NONCE 
@@ -369,7 +395,10 @@ export function registerAuthRoutes(
     const b = c.req.header("authorization")?.slice(7);
     if (b) {
       const { valid, payload } = await verifyJWT(b, cfg.jwtSecret);
-      if (valid && payload) void chain.emit("SESSION_END", { userId:payload.sub, ip:clientIP(c) }, "LOW");
+      if (valid && payload) {
+        if (payload.jti) revokeToken(payload.jti);
+        void chain.emit("SESSION_END", { userId:payload.sub, ip:clientIP(c) }, "LOW");
+      }
     }
     return c.json({ ok: true });
   });

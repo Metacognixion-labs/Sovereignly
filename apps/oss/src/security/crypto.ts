@@ -8,10 +8,14 @@
  *   - AES-256-GCM symmetric encryption for secrets at rest
  *
  * All operations use the Web Crypto API (available natively in Bun).
- * No external dependencies.
+ * Noble-curves / noble-hashes used for EVM-specific crypto (keccak256, secp256k1).
  */
 
-//  Types 
+import { keccak_256 } from "@noble/hashes/sha3";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { hexToBytes } from "@noble/curves/abstract/utils";
+
+//  Types
 
 export interface NodeKeyPair {
   publicKey:  Uint8Array;   // 32 bytes
@@ -55,7 +59,7 @@ const encoder = new TextEncoder();
 /** keccak256  correct EVM hash. Required for address derivation and EIP-712. */
 export function keccak256(data: Uint8Array | string): string {
   const bytes = typeof data === "string"
-    ? (data.startsWith("0x") ? hexToBytes(data) : new TextEncoder().encode(data))
+    ? (data.startsWith("0x") ? hexToBytes(data.slice(2)) : new TextEncoder().encode(data))
     : data;
   return toHex(keccak_256(bytes));
 }
@@ -72,13 +76,13 @@ export function evmAddressFromKey(privateKey: Uint8Array | string): string {
 
 export async function sha256(data: string | Uint8Array): Promise<string> {
   const bytes = typeof data === "string" ? encoder.encode(data) : data;
-  const hash  = await crypto.subtle.digest("SHA-256", bytes);
+  const hash  = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
   return toHex(new Uint8Array(hash));
 }
 
 export async function sha256Raw(data: string | Uint8Array): Promise<Uint8Array> {
   const bytes = typeof data === "string" ? encoder.encode(data) : data;
-  const hash  = await crypto.subtle.digest("SHA-256", bytes);
+  const hash  = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
   return new Uint8Array(hash);
 }
 
@@ -86,11 +90,11 @@ export async function sha256Raw(data: string | Uint8Array): Promise<Uint8Array> 
 
 export async function hmac256(secret: string, data: string): Promise<string> {
   const keyMaterial = await crypto.subtle.importKey(
-    "raw", encoder.encode(secret),
+    "raw", encoder.encode(secret) as BufferSource,
     { name: "HMAC", hash: "SHA-256" },
     false, ["sign"]
   );
-  const sig = await crypto.subtle.sign("HMAC", keyMaterial, encoder.encode(data));
+  const sig = await crypto.subtle.sign("HMAC", keyMaterial, encoder.encode(data) as BufferSource);
   return toHex(new Uint8Array(sig));
 }
 
@@ -129,11 +133,11 @@ export async function generateNodeKeyPair(): Promise<NodeKeyPair> {
 
 export async function signEd25519(privateKeyBytes: Uint8Array, data: string): Promise<string> {
   const key = await crypto.subtle.importKey(
-    "pkcs8", privateKeyBytes,
+    "pkcs8", privateKeyBytes as BufferSource,
     { name: "Ed25519" },
     false, ["sign"]
   );
-  const sig = await crypto.subtle.sign("Ed25519", key, encoder.encode(data));
+  const sig = await crypto.subtle.sign("Ed25519", key, encoder.encode(data) as BufferSource);
   return toHex(new Uint8Array(sig));
 }
 
@@ -144,12 +148,12 @@ export async function verifyEd25519(
 ): Promise<boolean> {
   try {
     const key = await crypto.subtle.importKey(
-      "raw", publicKeyBytes,
+      "raw", publicKeyBytes as BufferSource,
       { name: "Ed25519" },
       false, ["verify"]
     );
     return await crypto.subtle.verify(
-      "Ed25519", key, fromHex(signature), encoder.encode(data)
+      "Ed25519", key, fromHex(signature) as BufferSource, encoder.encode(data) as BufferSource
     );
   } catch {
     return false;
@@ -160,10 +164,10 @@ export async function verifyEd25519(
 
 export async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
   const keyMaterial = await crypto.subtle.importKey(
-    "raw", encoder.encode(password), "PBKDF2", false, ["deriveKey"]
+    "raw", encoder.encode(password) as BufferSource, "PBKDF2", false, ["deriveKey"]
   );
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: 310_000, hash: "SHA-256" },
+    { name: "PBKDF2", salt: salt as BufferSource, iterations: 310_000, hash: "SHA-256" },
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     false, ["encrypt", "decrypt"]
@@ -175,9 +179,9 @@ export async function encryptAES(plaintext: string, password: string): Promise<s
   const iv   = crypto.getRandomValues(new Uint8Array(12));
   const key  = await deriveKey(password, salt);
   const ct   = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv: iv as BufferSource },
     key,
-    encoder.encode(plaintext)
+    encoder.encode(plaintext) as BufferSource
   );
   // Format: base64(salt || iv || ciphertext)
   const combined = new Uint8Array(salt.length + iv.length + ct.byteLength);
@@ -193,7 +197,7 @@ export async function decryptAES(ciphertext: string, password: string): Promise<
   const iv   = combined.slice(16, 28);
   const ct   = combined.slice(28);
   const key  = await deriveKey(password, salt);
-  const pt   = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+  const pt   = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv as BufferSource }, key, ct as BufferSource);
   return new TextDecoder().decode(pt);
 }
 

@@ -85,6 +85,7 @@ interface AgentInstance {
   lastRun?:     number;
   runCount:     number;
   errorCount:   number;
+  running?:     boolean;   // re-entrancy guard
   timer?:       ReturnType<typeof setInterval>;
   eventSubId?:  string;
 }
@@ -168,6 +169,12 @@ export class AgentRuntime {
     const inst = this.agents.get(agentId);
     if (!inst) throw new Error(`Agent ${agentId} not registered`);
 
+    // Re-entrancy guard — prevent event cascades from flooding the event loop
+    if (inst.running) {
+      return { ok: true, actions: 0, results: [], durationMs: 0 };
+    }
+    inst.running = true;
+
     // Policy check
     const eval_ = this.policy.evaluate("agent.execute", {
       source: "agent", agentId, tenantId: inst.def.tenantId,
@@ -211,6 +218,8 @@ export class AgentRuntime {
         ok: false, actions: 0, results: [],
         durationMs: Date.now() - start,
       };
+    } finally {
+      inst.running = false;
     }
   }
 

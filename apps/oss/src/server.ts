@@ -50,8 +50,23 @@ const HOST         = process.env.HOST                 ?? "0.0.0.0";
 const DATA_DIR     = process.env.DATA_DIR             ?? "./data";
 const POOL_SIZE    = parseInt(process.env.WORKER_POOL_SIZE ?? "4");
 const ADMIN_TOKEN  = process.env.ADMIN_TOKEN;
-const JWT_SECRET   = process.env.JWT_SECRET ?? crypto.randomUUID() + crypto.randomUUID();
-const SERVER_KEY   = process.env.SOVEREIGN_SERVER_KEY ?? crypto.randomUUID();
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+if (IS_PRODUCTION && !process.env.JWT_SECRET) {
+  throw new Error("FATAL: JWT_SECRET must be set in production. Refusing to start with random secret.");
+}
+if (IS_PRODUCTION && !process.env.SOVEREIGN_SERVER_KEY) {
+  throw new Error("FATAL: SOVEREIGN_SERVER_KEY must be set in production. Refusing to start with random key.");
+}
+
+const JWT_SECRET   = process.env.JWT_SECRET ?? (() => {
+  console.warn("[WARN] JWT_SECRET not set — generating ephemeral secret. All tokens will be invalidated on restart.");
+  return crypto.randomUUID() + crypto.randomUUID();
+})();
+const SERVER_KEY   = process.env.SOVEREIGN_SERVER_KEY ?? (() => {
+  console.warn("[WARN] SOVEREIGN_SERVER_KEY not set — generating ephemeral key. Encrypted data will be unreadable after restart.");
+  return crypto.randomUUID();
+})();
 const ANCHOR_INTERVAL = parseInt(process.env.CHAIN_ANCHOR_INTERVAL ?? "100");
 
 const APP_URL = process.env.SOVEREIGN_DOMAIN
@@ -106,14 +121,25 @@ const passkeys = new PasskeyEngine({
 const kv       = new SovereignKV({ dataDir: `${DATA_DIR}/platform` });
 await kv.init();
 const storage   = new SovereignStorage({ dataDir: `${DATA_DIR}/platform` });
-const runtime   = new SovereignRuntime(kv, POOL_SIZE);
-const scheduler = new SovereignScheduler(chain);
+const runtime   = new SovereignRuntime(kv, { poolSize: POOL_SIZE });
+const scheduler = new SovereignScheduler(runtime);
 
-//  5. Gateway + routes 
+//  4b. Ecosystem services
+
+const policyEngine    = new PolicyEngine(platformBus);
+const workflowEngine  = new WorkflowEngine(platformBus, policyEngine);
+registerBuiltinWorkflows(workflowEngine, platformBus);
+const agentRuntime    = new AgentRuntime(platformBus, policyEngine, workflowEngine);
+registerBuiltinAgents(agentRuntime);
+const pluginRegistry  = new PluginRegistry(platformBus, policyEngine);
+const templateRegistry = new TemplateRegistry();
+const gamification    = new GamificationEngine(platformBus);
+
+//  5. Gateway + routes
 
 const { app, metrics, cache, limiter } = createGateway(runtime, kv, storage, {
   port: PORT, host: HOST,
-  corsOrigins: (process.env.CORS_ORIGINS ?? "*").split(","),
+  corsOrigins: (process.env.CORS_ORIGINS ?? (IS_PRODUCTION ? APP_URL : "*")).split(",").filter(Boolean),
   rateLimitPerMin: parseInt(process.env.RATE_LIMIT ?? "600"),
   adminToken: ADMIN_TOKEN,
   enableCompression: process.env.NODE_ENV === "production",
@@ -122,6 +148,10 @@ const { app, metrics, cache, limiter } = createGateway(runtime, kv, storage, {
 
 registerChainRoutes(app, chain, null, { adminToken: ADMIN_TOKEN, jwtSecret: JWT_SECRET });
 registerAuthRoutes(app, passkeys, oauthBroker, chain, { jwtSecret: JWT_SECRET, adminToken: ADMIN_TOKEN, appUrl: APP_URL });
+registerProtocolRoutes(app, platformBus, policyEngine, { adminToken: ADMIN_TOKEN });
+registerWorkflowRoutes(app, workflowEngine, platformBus, { adminToken: ADMIN_TOKEN });
+registerAgentRoutes(app, agentRuntime, platformBus, { adminToken: ADMIN_TOKEN });
+registerEcosystemRoutes(app, pluginRegistry, templateRegistry, gamification, { adminToken: ADMIN_TOKEN });
 
 // SDK ingest endpoint (single-tenant: no org isolation)
 app.post("/_sovereign/sdk/events", async (c) => {

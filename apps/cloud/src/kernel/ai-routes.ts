@@ -35,11 +35,11 @@ export function registerAIRoutes(
   });
 
   // Parse only (no execution)
-  app.post("/v1/ai/parse", (c) => {
+  app.post("/v1/ai/parse", async (c) => {
     if (!requireAdmin(c)) return c.json({ error: "admin required" }, 403);
 
-    const body = (c.req as any).json?.() ?? {};
-    const command = (body as any).command ?? c.req.query("q") ?? "";
+    const body = await c.req.json().catch(() => ({})) as any;
+    const command = body.command ?? c.req.query("q") ?? "";
     if (!command) return c.json({ error: "command or q required" }, 400);
 
     const intent = aiOS.parse(command as string);
