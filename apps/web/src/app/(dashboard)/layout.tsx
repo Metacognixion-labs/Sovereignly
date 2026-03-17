@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Blocks, Link2, ShieldCheck, ScrollText,
   Database, Settings, Activity, Coins, Cpu, Globe,
   Search, ChevronRight, Atom, Plus, FolderGit2,
-  User, CreditCard, Users, Key, Building2,
+  User, CreditCard, Users, Key, Building2, Crown, Server,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
@@ -38,6 +38,11 @@ const NAV = [
 
   { section: "System" },
   { label: "Settings",    href: "/settings",   icon: Settings },
+
+  { section: "Admin" },
+  { label: "Super Admin",  href: "/admin",          icon: Crown },
+  { label: "Tenants",      href: "/admin/tenants",  icon: Building2 },
+  { label: "System",       href: "/admin/system",   icon: Server },
 ] as const;
 
 // Connection status indicator
