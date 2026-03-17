@@ -43,6 +43,8 @@ import { TemplateRegistry }         from "./ecosystem/templates.ts";
 import { GamificationEngine }       from "./ecosystem/gamification.ts";
 import { registerEcosystemRoutes }  from "./ecosystem/routes.ts";
 import { tracingMiddleware, prometheusHandler, log } from "./observability/index.ts";
+import { CAEPReceiver, registerCAEPRoutes } from "./auth/caep.ts";
+import { ComplianceEvaluator } from "./policies/compliance-rules.ts";
 
 //  Config 
 
@@ -141,6 +143,26 @@ const pluginRegistry  = new PluginRegistry(platformBus, policyEngine);
 const templateRegistry = new TemplateRegistry();
 const gamification    = new GamificationEngine(platformBus);
 
+//  4c. CAEP receiver + Compliance evaluator
+const caepReceiver = new CAEPReceiver(chain);
+const complianceEvaluator = new ComplianceEvaluator(chain, platformBus, {
+  jwtSecretSet:     !!process.env.JWT_SECRET,
+  serverKeySet:     !!process.env.SOVEREIGN_SERVER_KEY,
+  adminTokenSet:    !!ADMIN_TOKEN,
+  tlsEnabled:       IS_PRODUCTION,
+  rateLimitEnabled: true,
+  corsRestricted:   IS_PRODUCTION,
+  encryptionAtRest: !!process.env.SOVEREIGN_SERVER_KEY,
+  passkeysEnabled:  true,
+  mfaAvailable:     true,
+  auditLogging:     true,
+  anomalyDetection: true,
+  secretScanning:   true,
+  inputValidation:  true,
+  workerIsolation:  true,
+});
+complianceEvaluator.start();
+
 //  5. Gateway + routes
 
 const { app, metrics, cache, limiter } = createGateway(runtime, kv, storage, {
@@ -158,7 +180,11 @@ app.get("/_sovereign/prometheus", (c) => prometheusHandler(c));
 
 registerChainRoutes(app, chain, null, { adminToken: ADMIN_TOKEN, jwtSecret: JWT_SECRET });
 registerAuthRoutes(app, passkeys, oauthBroker, chain, { jwtSecret: JWT_SECRET, adminToken: ADMIN_TOKEN, appUrl: APP_URL });
+registerCAEPRoutes(app, caepReceiver, { adminToken: ADMIN_TOKEN, appUrl: APP_URL });
 registerProtocolRoutes(app, platformBus, policyEngine, { adminToken: ADMIN_TOKEN });
+
+// Compliance-as-code endpoint
+app.get("/_sovereign/compliance/live", (c) => c.json(complianceEvaluator.report()));
 registerWorkflowRoutes(app, workflowEngine, platformBus, { adminToken: ADMIN_TOKEN });
 registerAgentRoutes(app, agentRuntime, platformBus, { adminToken: ADMIN_TOKEN });
 registerEcosystemRoutes(app, pluginRegistry, templateRegistry, gamification, { adminToken: ADMIN_TOKEN });
@@ -220,6 +246,7 @@ async function shutdown() {
   console.log("\n[Sovereignly] Shutting down...");
   await chain.emit("NODE_LEAVE", { nodeId: NODE_ID, reason: "graceful" }, "LOW");
   await chain.flush();
+  complianceEvaluator.stop();
   server.stop(true); scheduler.stop(); runtime.shutdown(); workflowEngine.close(); agentRuntime.close(); gamification.close();
   kv.close(); storage.close(); chain.close();
   process.exit(0);

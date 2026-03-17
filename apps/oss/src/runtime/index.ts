@@ -55,19 +55,57 @@ export interface InvokeResponse {
 
 //  Sandbox Worker Script 
 // This is inlined as a string so we can spawn it without a separate file.
+// -- Sandbox Security Config --
+const MAX_CODE_SIZE = 512 * 1024;  // 512KB max function code
+const BLOCKED_FETCH_PATTERNS = [
+  /^https?:\/\/localhost/i,
+  /^https?:\/\/127\./,
+  /^https?:\/\/0\./,
+  /^https?:\/\/10\./,
+  /^https?:\/\/172\.(1[6-9]|2\d|3[01])\./,
+  /^https?:\/\/192\.168\./,
+  /^https?:\/\/169\.254\./,       // AWS metadata
+  /^https?:\/\/\[::1\]/,
+  /^https?:\/\/metadata/i,        // cloud metadata
+  /^file:/i,
+];
+
 const SANDBOX_SCRIPT = /* js */ `
-// Sovereignly Sandbox Worker
-// Runs inside a Bun.Worker  fully isolated process
+// Sovereignly Sandbox Worker — Hardened
+// Runs inside a Bun.Worker with capability restrictions
 
 self.onmessage = async ({ data }) => {
-  const { msgId, code, request, env, kv } = data;
+  const { msgId, code, request, env, kv, allowedDomains } = data;
   const start = performance.now();
 
   try {
-    //  Build restricted global scope 
+    // Code size limit
+    if (code.length > ${MAX_CODE_SIZE}) {
+      throw new Error("Function code exceeds maximum size (512KB)");
+    }
+
+    // Block dangerous code patterns
+    const BLOCKED_PATTERNS = [
+      /process\\.exit/,
+      /require\\s*\\(/,
+      /import\\s*\\(/,           // dynamic import
+      /Bun\\./,                  // Bun native APIs
+      /\\beval\\b/,
+      /Function\\s*\\(/,         // Function constructor escape
+      /globalThis/,
+      /self\\./,                 // worker self access
+      /postMessage/,             // direct postMessage
+    ];
+    for (const pat of BLOCKED_PATTERNS) {
+      if (pat.test(code)) {
+        throw new Error("Blocked: function uses restricted API pattern: " + pat.source);
+      }
+    }
+
+    //  Build restricted global scope
     const kvProxy = {
       get:    (key)          => kv.data[key] ?? null,
-      set:    (key, val, o)  => { /* batched back via postMessage */ self.postMessage({ type: 'kv:set', key, val, ttl: o?.ttl }); },
+      set:    (key, val, o)  => { self.postMessage({ type: 'kv:set', key, val, ttl: o?.ttl }); },
       delete: (key)          => { self.postMessage({ type: 'kv:del', key }); },
       incr:   (key, by = 1) => { self.postMessage({ type: 'kv:incr', key, by }); return (kv.data[key] ? parseInt(kv.data[key]) : 0) + by; },
       list:   (prefix)       => Object.keys(kv.data).filter(k => !prefix || k.startsWith(prefix)).map(key => ({ key })),
@@ -77,7 +115,26 @@ self.onmessage = async ({ data }) => {
       get: (name) => env['SECRET_' + name] ?? undefined,
     };
 
-    //  Evaluate function code 
+    //  SSRF-safe fetch proxy
+    const BLOCKED_URLS = ${JSON.stringify(BLOCKED_FETCH_PATTERNS.map(r => r.source))};
+    const safeFetch = async (url, opts) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      for (const pat of BLOCKED_URLS) {
+        if (new RegExp(pat, 'i').test(urlStr)) {
+          throw new Error("Blocked: fetch to internal/private network address is not allowed");
+        }
+      }
+      // Allowlist check (if configured)
+      if (allowedDomains && allowedDomains.length > 0) {
+        const hostname = new URL(urlStr).hostname;
+        if (!allowedDomains.some(d => hostname === d || hostname.endsWith('.' + d))) {
+          throw new Error("Blocked: fetch domain not in allowlist: " + hostname);
+        }
+      }
+      return fetch(url, { ...opts, signal: AbortSignal.timeout(10000) });
+    };
+
+    //  Evaluate function code
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
     const fn = new AsyncFunction(
       'KV', 'SECRETS', 'env', 'fetch', 'Request', 'Response', 'Headers',
@@ -88,7 +145,7 @@ self.onmessage = async ({ data }) => {
     );
 
     const handler = await fn(
-      kvProxy, secretsProxy, env, fetch,
+      kvProxy, secretsProxy, env, safeFetch,
       Request, Response, Headers, URL, URLSearchParams,
       crypto, TextEncoder, TextDecoder, atob, btoa,
       JSON, Math, Date, performance,
