@@ -1,0 +1,16 @@
+{
+  "name": "@sovereignly/cli",
+  "version": "4.0.0",
+  "description": "CLI for Sovereignly sovereign cloud infrastructure",
+  "type": "module",
+  "bin": {
+    "sovereignly": "./src/index.ts",
+    "svn": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build src/index.ts --compile --outfile dist/sovereignly"
+  },
+  "license": "MIT",
+  "dependencies": {}
+}
