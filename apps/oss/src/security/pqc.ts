@@ -129,11 +129,11 @@ export class HybridSigner {
 
     // Ed25519 signature (Web Crypto)
     const ed25519CryptoKey = await crypto.subtle.importKey(
-      "pkcs8", ed25519Key,
+      "pkcs8", ed25519Key as unknown as BufferSource,
       { name: "Ed25519" },
       false, ["sign"]
     );
-    const ed25519Sig = await crypto.subtle.sign("Ed25519", ed25519CryptoKey, msgBytes);
+    const ed25519Sig = await crypto.subtle.sign("Ed25519", ed25519CryptoKey, msgBytes as unknown as BufferSource);
 
     // ML-DSA-65 signature (post-quantum)
     const mlDsaSig = ml_dsa65.sign(mlDsa65Key, msgBytes);
@@ -160,12 +160,12 @@ export class HybridSigner {
     let ed25519Valid = false;
     try {
       const pubCryptoKey = await crypto.subtle.importKey(
-        "raw", ed25519PubKey,
+        "raw", ed25519PubKey as unknown as BufferSource,
         { name: "Ed25519" },
         false, ["verify"]
       );
       ed25519Valid = await crypto.subtle.verify(
-        "Ed25519", pubCryptoKey, fromHex(sig.ed25519), msgBytes
+        "Ed25519", pubCryptoKey, fromHex(sig.ed25519) as unknown as BufferSource, msgBytes as unknown as BufferSource
       );
     } catch {
       ed25519Valid = false;

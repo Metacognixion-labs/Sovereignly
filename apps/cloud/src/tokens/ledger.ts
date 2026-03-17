@@ -316,7 +316,7 @@ export class TokenLedger {
     const treasury = this.getBalance("TREASURY");
     const feePool  = this.getBalance("FEE_POOL");
 
-    const totalMinted = mint ? mint.total_spent ?? mint.totalSpent ?? 0 : 0;
+    const totalMinted = mint ? (mint as any).total_spent ?? mint.totalSpent ?? 0 : 0;
     const totalBurned = burn ? burn.available : 0;
 
     // Sum all user available balances

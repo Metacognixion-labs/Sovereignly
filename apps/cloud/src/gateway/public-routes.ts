@@ -345,7 +345,7 @@ document.getElementById('f3').addEventListener('submit',async e=>{
 
     void chain.emit("AUTH_SUCCESS", {
       event: "signin", tenantId: tenant.id, email: normalized,
-    }, { severity: "LOW", source: "public-signin" });
+    }, "LOW");
 
     return c.json({
       ok: true,
@@ -389,7 +389,7 @@ document.getElementById('f3').addEventListener('submit',async e=>{
 
     void chain.emit("AUTH_SUCCESS", {
       event: "signin_totp", tenantId: payload.tid, email: payload.sub,
-    }, { severity: "LOW", source: "public-signin" });
+    }, "LOW");
 
     return c.json({
       ok: true,
@@ -460,7 +460,7 @@ document.getElementById('f3').addEventListener('submit',async e=>{
 
     void chain.emit("AUTH_SUCCESS", {
       event: "magic_link_signin", tenantId: tenant.id, email: normalized,
-    }, { severity: "LOW", source: "magic-link" });
+    }, "LOW");
 
     return c.html(magicResultPage("Signed in!", "Redirecting to dashboard…", true, jwt, tenant.id));
   });

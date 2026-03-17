@@ -110,8 +110,8 @@ export function registerTokenRoutes(
     if (!result.ok) return c.json({ error: result.error, ...result }, 400);
 
     return c.json({
-      ok:    true,
       ...result,
+      ok:    true,
       gates: tokenManager.getFeatureGates(),
     });
   });
