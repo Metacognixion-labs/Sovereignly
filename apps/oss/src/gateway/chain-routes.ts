@@ -76,8 +76,14 @@ export function registerChainRoutes(
   });
 
   //  Real-time SSE stream for chain events and blocks
+  //  Supports token in query string since browser EventSource can't send headers
   app.get("/_sovereign/chain/stream", (c) => {
-    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
+    const queryToken = c.req.query("token");
+    if (queryToken && cfg.adminToken && timingSafeEqual(queryToken, cfg.adminToken)) {
+      // authenticated via query param
+    } else if (!requireAuth(c)) {
+      return c.json({ error: "unauthorized — pass token as query param or x-sovereign-token header" }, 401);
+    }
 
     return streamSSE(c, async (stream) => {
       let lastEventTs = Date.now();

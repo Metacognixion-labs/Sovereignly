@@ -16,5 +16,6 @@
       "@sovereignly/oss/*": ["./apps/oss/src/*"]
     }
   },
-  "include": ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts", "packages/sdk/index.ts"]
+  "include": ["apps/*/src/**/*.ts", "packages/*/src/**/*.ts", "packages/sdk/index.ts"],
+  "exclude": ["apps/web/**"]
 }

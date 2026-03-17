@@ -44,6 +44,8 @@ import { GamificationEngine }       from "./ecosystem/gamification.ts";
 import { registerEcosystemRoutes }  from "./ecosystem/routes.ts";
 import { tracingMiddleware, prometheusHandler, log } from "./observability/index.ts";
 import { CAEPReceiver, registerCAEPRoutes } from "./auth/caep.ts";
+import { CredentialExchange, registerCXPRoutes } from "./auth/credential-exchange.ts";
+import { VCIssuer, registerVCRoutes } from "./identity/vc.ts";
 import { ComplianceEvaluator } from "./policies/compliance-rules.ts";
 
 //  Config 
@@ -172,6 +174,7 @@ const { app, metrics, cache, limiter } = createGateway(runtime, kv, storage, {
   adminToken: ADMIN_TOKEN,
   enableCompression: process.env.NODE_ENV === "production",
   logLevel: (process.env.LOG_LEVEL ?? "minimal") as any,
+  chain,
 });
 
 // Observability: request tracing + Prometheus metrics
@@ -181,6 +184,18 @@ app.get("/_sovereign/prometheus", (c) => prometheusHandler(c));
 registerChainRoutes(app, chain, null, { adminToken: ADMIN_TOKEN, jwtSecret: JWT_SECRET });
 registerAuthRoutes(app, passkeys, oauthBroker, chain, { jwtSecret: JWT_SECRET, adminToken: ADMIN_TOKEN, appUrl: APP_URL });
 registerCAEPRoutes(app, caepReceiver, { adminToken: ADMIN_TOKEN, appUrl: APP_URL });
+
+// Verifiable Credentials + Credential Exchange
+const vcIssuer = new VCIssuer({
+  domain: process.env.SOVEREIGN_DOMAIN ?? "localhost",
+  issuerName: "Sovereignly",
+  privateKey: new Uint8Array(32), // placeholder — use chain keypair in production
+  publicKeyHex: "0".repeat(64),
+});
+registerVCRoutes(app, vcIssuer, chain, { adminToken: ADMIN_TOKEN });
+const credExchange = new CredentialExchange(passkeys, chain, process.env.SOVEREIGN_DOMAIN ?? "localhost", "Sovereignly", APP_URL);
+registerCXPRoutes(app, credExchange, { jwtSecret: JWT_SECRET });
+
 registerProtocolRoutes(app, platformBus, policyEngine, { adminToken: ADMIN_TOKEN });
 
 // Compliance-as-code endpoint
