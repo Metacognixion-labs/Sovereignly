@@ -7,13 +7,14 @@ import {
   LayoutDashboard, Blocks, Link2, ShieldCheck, ScrollText,
   Database, Settings, Activity, Coins, Cpu, Globe,
   Search, ChevronRight, Atom, Plus, FolderGit2,
-  User, CreditCard, Users, Key,
+  User, CreditCard, Users, Key, Building2,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 
 const NAV = [
-  { section: "Projects" },
-  { label: "New Project",  href: "/projects/new", icon: Plus },
+  { section: "Workspace" },
+  { label: "Organizations", href: "/orgs",         icon: Building2 },
+  { label: "New Project",   href: "/projects/new", icon: Plus },
   { section: "Overview" },
   { label: "Dashboard",   href: "/overview",   icon: LayoutDashboard },
   { label: "Functions",   href: "/functions",  icon: Blocks },
