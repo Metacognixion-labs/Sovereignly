@@ -123,6 +123,47 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(false);
+
+  // Auth gate — check if user has token or admin token
+  useEffect(() => {
+    const stored = localStorage.getItem("sovereignly-config");
+    if (stored) {
+      try {
+        const config = JSON.parse(stored);
+        if (config?.state?.adminToken || config?.state?.jwtToken) {
+          setIsAuthed(true);
+        }
+      } catch {}
+    }
+    setAuthChecked(true);
+  }, []);
+
+  // Redirect unauthenticated users to login
+  if (authChecked && !isAuthed) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <img src="/logo.svg" alt="Sovereignly" className="w-16 h-16 mx-auto mb-6 drop-shadow-[0_0_12px_rgba(76,175,80,0.3)]" />
+          <h1 className="text-2xl font-semibold tracking-tight mb-2">Sign in required</h1>
+          <p className="text-sm text-text-muted mb-6">You need to sign in to access the dashboard.</p>
+          <div className="flex items-center justify-center gap-3">
+            <a href="/login" className="px-6 py-2.5 rounded-xl bg-brand text-background font-medium hover:bg-brand-bright transition-colors">Sign In</a>
+            <a href="/signup" className="px-6 py-2.5 rounded-xl border border-border font-medium hover:bg-surface transition-colors">Create Account</a>
+          </div>
+          <div className="mt-8 rounded-xl border border-border bg-panel p-4">
+            <p className="text-xs text-text-muted mb-2">Quick access with admin token:</p>
+            <p className="text-[10px] font-mono text-text-muted">Go to <a href="/settings" className="text-brand">/settings</a> and enter your admin token, then refresh.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authChecked) {
+    return <div className="min-h-screen bg-background flex items-center justify-center"><div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>;
+  }
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setCmdOpen(true); }
