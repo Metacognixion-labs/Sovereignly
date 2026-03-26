@@ -127,9 +127,21 @@ export async function verifyJWT(
   if (parts.length !== 3) return { valid: false, reason: "malformed" };
 
   const [header, body, sig] = parts;
-  const expected = await hmac256(secret, `${header}.${body}`);
-  const valid    = await hmac256Verify(secret, `${header}.${body}`, atob(sig.replace(/-/g,"+").replace(/_/g,"/")));
 
+  // Validate algorithm — reject alg:none and any non-HS256 algorithm
+  try {
+    // Base64url decode: replace URL-safe chars and add padding
+    const headerB64 = header.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = headerB64 + "=".repeat((4 - headerB64.length % 4) % 4);
+    const headerObj = JSON.parse(atob(padded));
+    if (headerObj.alg !== "HS256") {
+      return { valid: false, reason: `rejected algorithm: ${headerObj.alg}` };
+    }
+  } catch {
+    return { valid: false, reason: "invalid header" };
+  }
+
+  const valid = await hmac256Verify(secret, `${header}.${body}`, atob(sig.replace(/-/g,"+").replace(/_/g,"/")));
   if (!valid) return { valid: false, reason: "invalid signature" };
 
   try {

@@ -5,24 +5,40 @@ import { timingSafeEqual } from "../security/crypto.ts";
 // Primitives: TENANT, MACHINE, WORKFLOW, AGENT, EVENT, POLICY
 // All operations require authentication and policy validation.
 
-import type { Hono } from "hono";
+import type { Hono, Context } from "hono";
 import type { EventBus } from "../events/bus.ts";
 import type { PolicyEngine } from "../policies/engine.ts";
+import { verifyJWT } from "../security/zero-trust.ts";
 
 export function registerProtocolRoutes(
   app:     Hono,
   bus:     EventBus,
   policy:  PolicyEngine,
-  opts:    { adminToken?: string }
+  opts:    { adminToken?: string; jwtSecret: string }
 ) {
 
-  // -- Auth helper --
-  function requireAuth(c: any): { ok: boolean; role: string } {
+  // -- Auth helper (admin token OR valid JWT) --
+  async function requireAuth(c: Context): Promise<{ ok: boolean; role: string; userId?: string }> {
+    // 1. Admin token (header)
     const token = c.req.header("x-sovereign-token")?.replace("Bearer ", "")
                ?? c.req.header("authorization")?.slice(7);
-    if (!token) return { ok: false, role: "" };
-    if (opts.adminToken && timingSafeEqual(token ?? "", opts.adminToken)) return { ok: true, role: "admin" };
-    // TODO: JWT verification when integrated with full auth
+    if (token && opts.adminToken && timingSafeEqual(token, opts.adminToken)) {
+      return { ok: true, role: "admin", userId: "admin" };
+    }
+
+    // 2. JWT (Bearer header or session cookie)
+    const bearer = c.req.header("authorization")?.slice(7);
+    const cookieHeader = c.req.header("cookie") ?? "";
+    const cookieMatch = cookieHeader.match(/__sovereign_session=([^;]+)/);
+    const jwtToken = bearer ?? cookieMatch?.[1];
+
+    if (jwtToken) {
+      const { valid, payload } = await verifyJWT(jwtToken, opts.jwtSecret);
+      if (valid && payload) {
+        return { ok: true, role: payload.role ?? "user", userId: payload.sub };
+      }
+    }
+
     return { ok: false, role: "" };
   }
 
@@ -30,8 +46,8 @@ export function registerProtocolRoutes(
   // EVENTS -- query the event bus
   // ======================================================================
 
-  app.get("/v1/events", (c) => {
-    const auth = requireAuth(c);
+  app.get("/v1/events", async (c) => {
+    const auth = await requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
 
     const { type, tenantId, since, limit } = c.req.query();
@@ -45,8 +61,8 @@ export function registerProtocolRoutes(
     return c.json({ count: events.length, events });
   });
 
-  app.get("/v1/events/stats", (c) => {
-    const auth = requireAuth(c);
+  app.get("/v1/events/stats", async (c) => {
+    const auth = await requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
     return c.json(bus.stats());
   });
@@ -55,8 +71,8 @@ export function registerProtocolRoutes(
   // POLICIES -- manage declarative policies
   // ======================================================================
 
-  app.get("/v1/policies", (c) => {
-    const auth = requireAuth(c);
+  app.get("/v1/policies", async (c) => {
+    const auth = await requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
 
     const { scope } = c.req.query();
@@ -65,7 +81,7 @@ export function registerProtocolRoutes(
   });
 
   app.post("/v1/policies", async (c) => {
-    const auth = requireAuth(c);
+    const auth = await requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
     if (auth.role !== "admin") return c.json({ error: "admin required" }, 403);
 
@@ -88,8 +104,8 @@ export function registerProtocolRoutes(
     return c.json({ policy: result }, 201);
   });
 
-  app.get("/v1/policies/evaluate", (c) => {
-    const auth = requireAuth(c);
+  app.get("/v1/policies/evaluate", async (c) => {
+    const auth = await requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
 
     const { action, tenantId, source } = c.req.query();
@@ -99,8 +115,8 @@ export function registerProtocolRoutes(
     return c.json(result);
   });
 
-  app.get("/v1/policies/stats", (c) => {
-    const auth = requireAuth(c);
+  app.get("/v1/policies/stats", async (c) => {
+    const auth = await requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
     return c.json(policy.stats());
   });
@@ -117,7 +133,7 @@ export function registerProtocolRoutes(
   }>();
 
   app.post("/v1/machines", async (c) => {
-    const auth = requireAuth(c);
+    const auth = await requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
 
     const eval_ = policy.evaluate("machine.register", { role: auth.role });
@@ -144,16 +160,16 @@ export function registerProtocolRoutes(
     return c.json({ machine }, 201);
   });
 
-  app.get("/v1/machines", (c) => {
-    const auth = requireAuth(c);
+  app.get("/v1/machines", async (c) => {
+    const auth = await requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
 
     const list = Array.from(machines.values());
     return c.json({ count: list.length, machines: list });
   });
 
-  app.get("/v1/machines/:id", (c) => {
-    const auth = requireAuth(c);
+  app.get("/v1/machines/:id", async (c) => {
+    const auth = await requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
 
     const machine = machines.get(c.req.param("id"));
@@ -161,7 +177,10 @@ export function registerProtocolRoutes(
     return c.json(machine);
   });
 
-  app.post("/v1/machines/:id/heartbeat", (c) => {
+  app.post("/v1/machines/:id/heartbeat", async (c) => {
+    const auth = await requireAuth(c);
+    if (!auth.ok) return c.json({ error: "authentication required" }, 401);
+
     const machine = machines.get(c.req.param("id"));
     if (!machine) return c.json({ error: "not found" }, 404);
     machine.lastHeartbeat = Date.now();
@@ -177,7 +196,10 @@ export function registerProtocolRoutes(
   // PLATFORM INFO
   // ======================================================================
 
-  app.get("/v1/info", (c) => {
+  app.get("/v1/info", async (c) => {
+    // Require at least basic auth — prevents architecture info disclosure
+    const auth = await requireAuth(c);
+    if (!auth.ok) return c.json({ error: "authentication required" }, 401);
     return c.json({
       platform:  "Sovereignly",
       version:   "4.0.0",

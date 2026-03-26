@@ -41,24 +41,28 @@ export function registerChainRoutes(
     return c.json({ token, role, ttlSecs: ttl, type: "Bearer" });
   });
 
-  //  Chain stats 
+  //  Chain stats (all require auth — prevent audit trail information disclosure)
 
   app.get("/_sovereign/chain/stats", (c) => {
+    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
     return c.json(chain.getStats());
   });
 
   app.get("/_sovereign/chain/tip", (c) => {
+    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
     const tip = chain.getTip();
     return tip ? c.json(tip) : c.json({ error: "no blocks" }, 404);
   });
 
   app.get("/_sovereign/chain/block/:index", (c) => {
+    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
     const idx = parseInt(c.req.param("index"));
     const block = chain.getBlock(idx);
     return block ? c.json(block) : c.json({ error: "not found" }, 404);
   });
 
   app.get("/_sovereign/chain/verify", async (c) => {
+    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
     const result = await chain.verifyChainIntegrity();
     return c.json(result, result.valid ? 200 : 500);
   });
@@ -87,12 +91,11 @@ export function registerChainRoutes(
       cookieAuthed = valid;
     }
 
-    // 2. Query token fallback (legacy / programmatic clients)
-    const queryToken = c.req.query("token");
+    // 2. Header-based auth fallback (x-sovereign-token or Authorization: Bearer)
+    // NOTE: Query param token (?token=...) is DEPRECATED — exposes secrets in URLs/logs.
+    // Use cookie auth (browser) or x-sovereign-token header (programmatic clients).
     if (cookieAuthed) {
       // authenticated via verified session cookie
-    } else if (queryToken && cfg.adminToken && timingSafeEqual(queryToken, cfg.adminToken)) {
-      // authenticated via query param
     } else if (!requireAuth(c)) {
       return c.json({ error: "unauthorized" }, 401);
     }
@@ -131,7 +134,8 @@ export function registerChainRoutes(
 
       stream.onAbort(() => {
         clearInterval(heartbeat);
-        // Note: observers are function references, chain doesn't expose removeListener yet
+        chain.offBlock(onBlock);
+        chain.offEvent(onEvent);
       });
 
       // Block until stream closes
@@ -205,11 +209,13 @@ export function registerChainRoutes(
   //  Anchor info 
 
   app.get("/_sovereign/chain/anchor/latest", (c) => {
+    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
     const events = chain.getEvents({ type: "MERIDIAN_ANCHOR", limit: 1 });
     return c.json({ latest: events[0] ?? null });
   });
 
   app.get("/_sovereign/chain/anchor/schema", (c) => {
+    if (!requireAuth(c)) return c.json({ error: "unauthorized" }, 401);
     return c.json({
       uid: "0xa3518350e4a3857be49837596827c326dad06d71a9ed18cd883774118c1e90dc",
       schema: "bytes32 merkleRoot,uint256 blockIndex,uint32 eventCount,string orgId,string protocol",

@@ -125,7 +125,7 @@ export function createPlatformGateway(cfg: Config, deps: {
   // Agent + Workflow + Protocol routes
   registerAgentRoutes(app, deps.agentRuntime, deps.eventBus, { adminToken: cfg.adminToken });
   registerWorkflowRoutes(app, deps.workflowEngine, deps.eventBus, { adminToken: cfg.adminToken });
-  registerProtocolRoutes(app, deps.eventBus, deps.policyEngine, { adminToken: cfg.adminToken });
+  registerProtocolRoutes(app, deps.eventBus, deps.policyEngine, { adminToken: cfg.adminToken, jwtSecret: cfg.jwtSecret });
 
   // Cluster routes
   registerClusterRoutes(app, deps.nodeRegistry, deps.clusterTopology, { adminToken: cfg.adminToken });

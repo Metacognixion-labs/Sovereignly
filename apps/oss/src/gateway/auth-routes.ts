@@ -518,16 +518,29 @@ export function registerAuthRoutes(
     return user ? c.json({ user, exp: payload.exp }) : c.json({ error: "not found" }, 404);
   });
 
-  //  REFRESH
+  //  REFRESH (with token rotation — old token is revoked, new one issued)
   app.post("/_sovereign/auth/refresh", async (c) => {
     const b = extractJWT(c);
     if (!b) return c.json({ error: "auth required" }, 401);
     const { valid, payload } = await verifyJWT(b, cfg.jwtSecret);
     if (!valid || !payload) return c.json({ error: "invalid token" }, 401);
+
     const user = users.get(payload.sub);
     if (!user) return c.json({ error: "user not found" }, 404);
+
+    // Rotation: revoke the old token before issuing a new one
+    // This ensures stolen tokens can't be refreshed after the legitimate user refreshes
+    if (payload.jti) {
+      revokeToken(payload.jti);
+    }
+
     const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
     setSessionCookie(c, token);
+
+    void chain?.emit("AUTH_SUCCESS", {
+      userId: user.id, method: "refresh", rotated: true,
+    }, "LOW");
+
     return c.json({ token, user });
   });
 

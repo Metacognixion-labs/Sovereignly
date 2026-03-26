@@ -53,6 +53,7 @@ import { CredentialExchange, registerCXPRoutes } from "./auth/credential-exchang
 import { VCIssuer, registerVCRoutes } from "./identity/vc.ts";
 import { ComplianceEvaluator } from "./policies/compliance-rules.ts";
 import { registerQuantumStatusRoutes } from "./security/quantum-status.ts";
+import { VERSION } from "./version.ts";
 
 //  Config 
 
@@ -248,7 +249,7 @@ registerVCRoutes(app, vcIssuer, chain, { adminToken: ADMIN_TOKEN });
 const credExchange = new CredentialExchange(passkeys, chain, process.env.SOVEREIGN_DOMAIN ?? "localhost", "Sovereignly", APP_URL);
 registerCXPRoutes(app, credExchange, { jwtSecret: JWT_SECRET });
 
-registerProtocolRoutes(app, platformBus, policyEngine, { adminToken: ADMIN_TOKEN });
+registerProtocolRoutes(app, platformBus, policyEngine, { adminToken: ADMIN_TOKEN, jwtSecret: JWT_SECRET });
 
 // Compliance-as-code + Quantum status endpoints
 app.get("/_sovereign/compliance/live", (c) => c.json(complianceEvaluator.report()));

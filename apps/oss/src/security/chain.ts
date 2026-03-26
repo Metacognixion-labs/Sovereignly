@@ -29,7 +29,7 @@ import { join }     from "node:path";
 import {
   sha256, signEd25519, verifyEd25519, safeJsonParse,
   generateNodeKeyPair, NodeKeyPair,
-  MerkleTree, IncrementalMerkleTree, toHex,
+  MerkleTree, IncrementalMerkleTree, toHex, fromHex,
 } from "./crypto.ts";
 import { sha3Hash } from "./pqc.ts";
 
@@ -134,7 +134,7 @@ export class SovereignChain {
 
   private bootstrap() {
     this.db.run("PRAGMA journal_mode = WAL");
-    this.db.run("PRAGMA synchronous = NORMAL");
+    this.db.run("PRAGMA synchronous = FULL"); // FULL for audit chain — crash safety over write speed
     this.db.run("PRAGMA cache_size = -64000");
     this.db.run("PRAGMA busy_timeout = 5000");
     this.db.run("PRAGMA temp_store = MEMORY");
@@ -622,32 +622,65 @@ export class SovereignChain {
     return { blocks, events, anchored, critical, tip };
   }
 
-  /** Verify entire chain integrity (O(n)  use sparingly) */
+  /** Verify entire chain integrity: hash chain + Ed25519 signatures (O(n) — use sparingly) */
   async verifyChainIntegrity(): Promise<{ valid: boolean; failedAt?: number; reason?: string }> {
     const allBlocks = this.reader.prepare(
       "SELECT * FROM blocks ORDER BY idx ASC"
-    ).all() as any[];
+    ).all() as Array<{
+      idx: number; ts: number; prev_hash: string; merkle_root: string;
+      node_id: string; signature: string; block_hash: string;
+    }>;
+
+    // Pre-load all known node public keys for signature verification
+    const nodeKeys = new Map<string, Uint8Array>();
+    const keyRows = this.reader.prepare("SELECT node_id, public_key FROM node_keys").all() as Array<{ node_id: string; public_key: string }>;
+    for (const row of keyRows) {
+      nodeKeys.set(row.node_id, fromHex(row.public_key));
+    }
 
     let prevHash = "0".repeat(64);
     for (const b of allBlocks) {
+      // 1. Chain link continuity
       if (b.idx > 0 && b.prev_hash !== prevHash) {
         return { valid: false, failedAt: b.idx, reason: "broken chain link" };
       }
+
+      // 2. Block hash integrity
       const expectedHash = await sha256(
         `${b.idx}|${b.ts}|${b.prev_hash}|${b.merkle_root}|${b.node_id}`
       );
       if (expectedHash !== b.block_hash) {
         return { valid: false, failedAt: b.idx, reason: "invalid block hash" };
       }
+
+      // 3. Ed25519 signature verification (if node key is known)
+      const pubKey = nodeKeys.get(b.node_id);
+      if (pubKey && b.signature) {
+        const sigValid = await verifyEd25519(pubKey, b.signature, b.block_hash);
+        if (!sigValid) {
+          return { valid: false, failedAt: b.idx, reason: "invalid block signature" };
+        }
+      }
+
       prevHash = b.block_hash;
     }
     return { valid: true };
   }
 
-  //  Subscriptions 
+  //  Subscriptions (with removal for preventing memory leaks on SSE disconnect)
 
   onBlock(fn: (block: Block) => void): void   { this.onBlockSealed.push(fn); }
   onEvent(fn: (event: AuditEvent) => void): void { this.onAuditEvent.push(fn); }
+
+  offBlock(fn: (block: Block) => void): void {
+    const idx = this.onBlockSealed.indexOf(fn);
+    if (idx !== -1) this.onBlockSealed.splice(idx, 1);
+  }
+
+  offEvent(fn: (event: AuditEvent) => void): void {
+    const idx = this.onAuditEvent.indexOf(fn);
+    if (idx !== -1) this.onAuditEvent.splice(idx, 1);
+  }
 
   //  Lifecycle 
 
