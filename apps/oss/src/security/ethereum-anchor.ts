@@ -30,6 +30,7 @@
  */
 
 import { sha256Raw } from "../security/crypto.ts";
+import { log } from "../observability/index.ts";
 
 //  Types 
 
@@ -242,12 +243,12 @@ export class EthereumAnchor {
   async init(): Promise<void> {
     this.address = await privateKeyToAddress(this.cfg.privateKey);
     this.nonce   = await this.fetchNonce();
-    console.log(`[EthAnchor] Wallet: ${this.address} (${this.cfg.network})`);
+    log("info", "EthAnchor wallet initialized", { address: this.address, network: this.cfg.network });
     const balance = await this.fetchBalance();
     const ethBalance = Number(balance) / 1e18;
-    console.log(`[EthAnchor] Balance: ${ethBalance.toFixed(4)} ETH`);
+    log("info", "EthAnchor balance", { balance: ethBalance.toFixed(4), unit: "ETH" });
     if (ethBalance < 0.005) {
-      console.warn(`[EthAnchor]  Low ETH balance. Top up ${this.address} on ${this.cfg.network}`);
+      log("warn", "Low ETH balance — top up wallet", { address: this.address, network: this.cfg.network, balance: ethBalance.toFixed(4) });
     }
   }
 
@@ -289,12 +290,10 @@ export class EthereumAnchor {
       timestamp:     Date.now(),
     };
 
-    console.log(
-      `[EthAnchor]  Anchored block #${opts.chainBlockIdx} to ${this.cfg.network}`,
-      `\n  tx:   ${txHash}`,
-      `\n  root: ${opts.merkleRoot}`,
-      `\n  tenants: ${opts.tenantCount}`,
-    );
+    log("info", "EthAnchor block anchored", {
+      blockIndex: opts.chainBlockIdx, network: this.cfg.network,
+      txHash, merkleRoot: opts.merkleRoot, tenantCount: opts.tenantCount,
+    });
 
     return result;
   }

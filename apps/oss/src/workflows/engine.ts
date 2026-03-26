@@ -11,6 +11,7 @@
 
 import type { EventBus } from "../events/bus.ts";
 import type { PolicyEngine } from "../policies/engine.ts";
+import { log } from "../observability/index.ts";
 
 // -- Types --
 
@@ -132,7 +133,7 @@ export class WorkflowEngine {
 
     // Execute asynchronously
     this.execute(def, instance, abort.signal).catch(err => {
-      console.warn(`[Workflow] ${id} execution error:`, err.message);
+      log("warn", "Workflow execution error", { workflowId: id, error: err.message });
     });
 
     return instance;

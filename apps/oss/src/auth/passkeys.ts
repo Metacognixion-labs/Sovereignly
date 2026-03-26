@@ -233,7 +233,12 @@ export class PasskeyEngine {
   private rpId:    string;
   private rpName:  string;
   private origin:  string;
-  private challenges = new Map<string, { userId: string; expiresAt: number; type: "reg" | "auth" }>();
+  // Challenges persisted to SQLite (survives restart, prevents replay after recovery)
+  private stmtSetChallenge!:    ReturnType<Database["prepare"]>;
+  private stmtGetChallenge!:    ReturnType<Database["prepare"]>;
+  private stmtDeleteChallenge!: ReturnType<Database["prepare"]>;
+  private stmtGcChallenges!:    ReturnType<Database["prepare"]>;
+  private gcTimer!: Timer;
 
   constructor(opts: {
     dataDir: string;
@@ -266,6 +271,36 @@ export class PasskeyEngine {
       )
     `);
     this.db.run("CREATE INDEX IF NOT EXISTS idx_creds_user ON credentials(user_id)");
+
+    // Challenges table — persisted instead of in-memory Map
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS challenges (
+        challenge   TEXT PRIMARY KEY,
+        user_id     TEXT NOT NULL,
+        type        TEXT NOT NULL CHECK(type IN ('reg', 'auth')),
+        expires_at  INTEGER NOT NULL
+      )
+    `);
+    this.db.run("CREATE INDEX IF NOT EXISTS idx_challenges_expires ON challenges(expires_at)");
+
+    // Prepared statements for hot-path challenge ops
+    this.stmtSetChallenge = this.db.prepare(
+      "INSERT OR REPLACE INTO challenges (challenge, user_id, type, expires_at) VALUES ($c, $uid, $type, $exp)"
+    );
+    this.stmtGetChallenge = this.db.prepare(
+      "SELECT user_id, type, expires_at FROM challenges WHERE challenge = $c AND expires_at > $now"
+    );
+    this.stmtDeleteChallenge = this.db.prepare(
+      "DELETE FROM challenges WHERE challenge = $c"
+    );
+    this.stmtGcChallenges = this.db.prepare(
+      "DELETE FROM challenges WHERE expires_at <= $now"
+    );
+
+    // GC expired challenges every 60s
+    this.gcTimer = setInterval(() => {
+      this.stmtGcChallenges.run({ $now: Date.now() });
+    }, 60_000);
   }
 
   //  REGISTRATION 
@@ -279,10 +314,9 @@ export class PasskeyEngine {
     const challenge = b64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
     const userIdB64 = b64urlEncode(new TextEncoder().encode(opts.userId));
 
-    this.challenges.set(challenge, {
-      userId: opts.userId,
-      expiresAt: Date.now() + 5 * 60 * 1000,  // 5 min
-      type: "reg",
+    this.stmtSetChallenge.run({
+      $c: challenge, $uid: opts.userId,
+      $type: "reg", $exp: Date.now() + 5 * 60 * 1000,
     });
 
     const options = {
@@ -330,10 +364,9 @@ export class PasskeyEngine {
   }): Promise<{ ok: boolean; credentialId?: string; reason?: string }> {
     try {
       // 1. Verify challenge
-      const ch = this.challenges.get(opts.challenge);
+      const ch = this.stmtGetChallenge.get({ $c: opts.challenge, $now: Date.now() }) as { user_id: string; type: string; expires_at: number } | null;
       if (!ch || ch.type !== "reg") return { ok: false, reason: "invalid challenge" };
-      if (Date.now() > ch.expiresAt)  return { ok: false, reason: "challenge expired" };
-      this.challenges.delete(opts.challenge);
+      this.stmtDeleteChallenge.run({ $c: opts.challenge });
 
       // 2. Verify clientDataJSON
       const clientData = JSON.parse(new TextDecoder().decode(b64urlDecode(opts.clientDataJSON)));
@@ -393,7 +426,7 @@ export class PasskeyEngine {
           (id, user_id, public_key_jwk, counter, aaguid, transports, device_name, created_at, last_used_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        credId, ch.userId, JSON.stringify(jwk), counter, aaguid,
+        credId, ch.user_id, JSON.stringify(jwk), counter, aaguid,
         JSON.stringify(opts.transports ?? []),
         opts.deviceName ?? this.guessDeviceName(aaguid, opts.transports ?? []),
         now, now
@@ -413,10 +446,9 @@ export class PasskeyEngine {
   }): AuthBeginResult {
     const challenge = b64urlEncode(crypto.getRandomValues(new Uint8Array(32)));
 
-    this.challenges.set(challenge, {
-      userId: opts.userId ?? "__any__",
-      expiresAt: Date.now() + 5 * 60 * 1000,
-      type: "auth",
+    this.stmtSetChallenge.run({
+      $c: challenge, $uid: opts.userId ?? "__any__",
+      $type: "auth", $exp: Date.now() + 5 * 60 * 1000,
     });
 
     const allowCredentials = opts.credentialIds?.map(id => ({
@@ -451,10 +483,9 @@ export class PasskeyEngine {
   }> {
     try {
       // 1. Verify challenge
-      const ch = this.challenges.get(opts.challenge);
+      const ch = this.stmtGetChallenge.get({ $c: opts.challenge, $now: Date.now() }) as { user_id: string; type: string; expires_at: number } | null;
       if (!ch || ch.type !== "auth") return { ok: false, reason: "invalid challenge" };
-      if (Date.now() > ch.expiresAt)  return { ok: false, reason: "challenge expired" };
-      this.challenges.delete(opts.challenge);
+      this.stmtDeleteChallenge.run({ $c: opts.challenge });
 
       // 2. Load stored credential
       const row = this.db.prepare(
@@ -575,7 +606,7 @@ export class PasskeyEngine {
     return "Passkey";
   }
 
-  close() { this.db.close(); }
+  close() { clearInterval(this.gcTimer); this.db.close(); }
 }
 
 //  Timing-safe comparison 

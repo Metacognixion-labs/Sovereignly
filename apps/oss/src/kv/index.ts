@@ -18,6 +18,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { log } from "../observability/index.ts";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS kv (
@@ -92,7 +93,7 @@ export class SovereignKV {
 
     // GC expired keys every 60s
     this.gcTimer = setInterval(() => this.gc(), options.gcIntervalMs ?? 60_000);
-    console.log("[KV] SQLite store ready");
+    log("info", "KV SQLite store ready");
   }
 
   /** Async init hook (constructor handles setup, this is for interface compatibility) */
@@ -121,9 +122,9 @@ export class SovereignKV {
       const idx = prefix.indexOf(":");
       const ns = prefix.slice(0, idx);
       const p = prefix.slice(idx + 1);
-      return this._list(ns, p).map((k: any) => k.key ? `${ns}:${k.key}` : `${ns}:${k}`);
+      return this._list(ns, p).map((k) => `${ns}:${k.key}`);
     }
-    return this._list(prefix ?? "default").map((k: any) => k.key ?? k);
+    return this._list(prefix ?? "default").map((k) => k.key);
   }
 
   private splitKey(key: string): [string, string] {
@@ -181,7 +182,7 @@ export class SovereignKV {
   }
 
   _get(ns: string, key: string): string | null {
-    const row = this.stmtGet.get({ $ns: ns, $key: key, $now: Date.now() }) as any;
+    const row = this.stmtGet.get({ $ns: ns, $key: key, $now: Date.now() }) as { value: string } | null;
     if (!row) { this.misses++; return null; }
     this.hits++;
     return row.value;
@@ -241,7 +242,7 @@ export class SovereignKV {
   }
 
   _incr(ns: string, key: string, by = 1): number {
-    const row = this.retryWrite(() => this.stmtIncr.get({ $ns: ns, $key: key, $by: by })) as any;
+    const row = this.retryWrite(() => this.stmtIncr.get({ $ns: ns, $key: key, $by: by })) as { value: number };
     return row.value;
   }
 
@@ -275,7 +276,7 @@ export class SovereignKV {
              SUM(LENGTH(key) + LENGTH(value)) AS sizeBytes,
              SUM(CASE WHEN expires IS NOT NULL AND expires <= $now THEN 1 ELSE 0 END) AS expiredCount
       FROM kv GROUP BY ns
-    `).all({ now: Date.now() }) as any[];
+    `).all({ now: Date.now() }) as Array<{ ns: string; keyCount: number; sizeBytes: number | null; expiredCount: number | null }>;
 
     const total = this.hits + this.misses;
     return rows.map(r => ({
@@ -288,12 +289,12 @@ export class SovereignKV {
   }
 
   listNamespaces(): string[] {
-    return (this.db.prepare("SELECT DISTINCT ns FROM kv").all() as any[]).map(r => r.ns);
+    return (this.db.prepare("SELECT DISTINCT ns FROM kv").all() as { ns: string }[]).map(r => r.ns);
   }
 
   private gc() {
     const result = this.stmtExpire.run({ $now: Date.now() });
-    if (result.changes > 0) console.log(`[KV] GC removed ${result.changes} expired keys`);
+    if (result.changes > 0) log("info", "KV GC removed expired keys", { count: result.changes });
   }
 
   close() {

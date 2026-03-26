@@ -19,6 +19,7 @@ import { timingSafeEqual } from "../security/crypto.ts";
 import type { SovereignRuntime, InvokeRequest } from "../runtime/index.ts";
 import type { SovereignKV } from "../kv/index.ts";
 import type { SovereignStorage } from "../storage/index.ts";
+import { log } from "../observability/index.ts";
 
 export interface GatewayConfig {
   chain?: import("../security/chain.ts").SovereignChain;
@@ -608,15 +609,15 @@ export function startServer(
     hostname: cfg.host,
     fetch: app.fetch,
     error(error) {
-      console.error("[Bun.serve] Unhandled fetch error:", error);
+      log("error", "Unhandled fetch error", { error: error?.message ?? String(error) });
       return new Response("Internal Server Error", { status: 500 });
     },
     idleTimeout: 30,
     // Bun-specific: WebSocket upgrade hook
     websocket: {
       message(ws, msg) { ws.send(msg); },
-      open(ws) { console.log("[WS] Connection opened"); },
-      close(ws) { console.log("[WS] Connection closed"); },
+      open(ws) { log("info", "WebSocket connection opened"); },
+      close(ws) { log("info", "WebSocket connection closed"); },
     },
   });
 

@@ -84,26 +84,26 @@ if (IS_PRODUCTION) {
   // Validate CORS_ORIGINS is set (don't allow wildcard in prod)
   const corsOrigins = process.env.CORS_ORIGINS ?? "";
   if (!corsOrigins || corsOrigins === "*") {
-    console.warn("[SECURITY] CORS_ORIGINS not set or uses wildcard '*' in production. Set explicit origins.");
+    log("warn", "CORS_ORIGINS not set or uses wildcard '*' in production", { hint: "Set explicit origins" });
   }
 
   // Validate SOVEREIGN_DOMAIN is set for proper cookie/URL handling
   if (!process.env.SOVEREIGN_DOMAIN) {
-    console.warn("[SECURITY] SOVEREIGN_DOMAIN not set in production. Cookies and URLs will use localhost.");
+    log("warn", "SOVEREIGN_DOMAIN not set in production — cookies and URLs will use localhost");
   }
 
   // Warn about anchor tier defaulting to free
   if (!process.env.ANCHOR_TIER) {
-    console.warn("[CONFIG] ANCHOR_TIER not set — defaulting to 'free'. Set 'evm' or 'solana' for blockchain anchoring.");
+    log("warn", "ANCHOR_TIER not set — defaulting to 'free'", { hint: "Set 'evm' or 'solana' for blockchain anchoring" });
   }
 }
 
 const JWT_SECRET   = process.env.JWT_SECRET ?? (() => {
-  console.warn("[WARN] JWT_SECRET not set — generating ephemeral secret. All tokens will be invalidated on restart.");
+  log("warn", "JWT_SECRET not set — generating ephemeral secret, tokens invalidated on restart");
   return crypto.randomUUID() + crypto.randomUUID();
 })();
 const SERVER_KEY   = process.env.SOVEREIGN_SERVER_KEY ?? (() => {
-  console.warn("[WARN] SOVEREIGN_SERVER_KEY not set — generating ephemeral key. Encrypted data will be unreadable after restart.");
+  log("warn", "SOVEREIGN_SERVER_KEY not set — generating ephemeral key, encrypted data unreadable after restart");
   return crypto.randomUUID();
 })();
 const ANCHOR_INTERVAL = parseInt(process.env.CHAIN_ANCHOR_INTERVAL ?? "100");
@@ -318,7 +318,7 @@ await chain.emit("NODE_JOIN", {
   port: PORT, features: { passkeys: true, oauth: oauthBroker.getSupportedProviders(), omnichain: true },
 }, "LOW");
 
-console.log(`[Sovereignly OSS]  Ready  ${APP_URL}`);
+log("info", "Sovereignly OSS ready", { url: APP_URL });
 
 //  Graceful Shutdown (drain in-flight → flush chain → close stores)
 

@@ -53,8 +53,9 @@ import { ed25519 }             from "@noble/curves/ed25519";
 import { keccak_256 }          from "@noble/hashes/sha3";
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2";
 import { ripemd160 }           from "@noble/hashes/ripemd160";
+import { log } from "../observability/index.ts";
 
-//  Primitive utilities 
+//  Primitive utilities
 
 const toHex   = (b: Uint8Array): string => Array.from(b).map(x=>x.toString(16).padStart(2,"0")).join("");
 const fromHex = (h: string): Uint8Array => {
@@ -950,7 +951,11 @@ export class OmnichainAnchor {
 
     const n = result.receipts.length;
     const e = Object.keys(result.errors).length;
-    console.log(`[OmnichainAnchor] block #${blockIdx}: ${n} chain(s) [${result.receipts.map(r=>r.chain).join("+")}]${e?` | ${e} error(s)`:""}`);
+    log("info", "OmnichainAnchor complete", {
+      blockIndex: blockIdx, chains: n,
+      chainList: result.receipts.map(r=>r.chain).join("+"),
+      errors: e || undefined,
+    });
 
     return result;
   }
@@ -1006,10 +1011,9 @@ export class OmnichainAnchor {
     const expected = computeSchemaUID(SOVEREIGN_SCHEMA);
     const configured = this.cfg.easBase?.schemaUID;
     if (configured && configured.toLowerCase() !== expected.toLowerCase()) {
-      console.warn(`[OmnichainAnchor] WARNING: configured EAS schema UID ${configured} does not match computed ${expected}`);
-      console.warn(`[OmnichainAnchor] Register schema at easscan.org: "${SOVEREIGN_SCHEMA}"`);
+      log("warn", "OmnichainAnchor schema UID mismatch", { configured, expected, hint: `Register schema at easscan.org` });
     } else {
-      console.log(`[OmnichainAnchor] Schema UID verified: ${expected}`);
+      log("info", "OmnichainAnchor schema UID verified", { schemaUID: expected });
     }
   }
 

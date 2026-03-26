@@ -31,7 +31,7 @@ import { timingSafeEqual } from "../security/crypto.ts";
  *   GET  /_sovereign/auth/stats                      Auth statistics
  */
 
-import type { Hono }            from "hono";
+import type { Hono, Context }   from "hono";
 import { Database }             from "bun:sqlite";
 import { join }                 from "node:path";
 import { PasskeyEngine }        from "../auth/passkeys.ts";
@@ -43,6 +43,27 @@ import { issueJWT, verifyJWT, revokeToken }  from "../security/zero-trust.ts";
 import type { SovereignChain }  from "../security/chain.ts";
 import type { MagicLinkService } from "../auth/magic-link.ts";
 import type { SovereignKV }     from "../kv/index.ts";
+
+/** Raw row shape returned by bun:sqlite for the users table */
+interface UserRow {
+  id: string;
+  email: string | null;
+  display_name: string;
+  role: string;
+  plan: string;
+  auth_methods: string;
+  evm_address: string | null;
+  solana_address: string | null;
+  avatar_url: string | null;
+  created_at: number;
+  last_seen_at: number;
+}
+
+/** Raw row shape for COUNT queries */
+interface CountRow { n: number }
+
+/** Raw row shape for role-grouped counts */
+interface RoleCountRow { role: string; n: number }
 
 // Auth code store — KV-backed when available, in-memory fallback
 let _authCodeKV: SovereignKV | null = null;
@@ -84,7 +105,7 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const COOKIE_NAME = "__sovereign_session";
 const COOKIE_MAX_AGE = 3600; // 1 hour (matches JWT TTL)
 
-function setSessionCookie(c: any, token: string): void {
+function setSessionCookie(c: Context, token: string): void {
   const flags = [
     `${COOKIE_NAME}=${token}`,
     `Path=/`,
@@ -96,7 +117,7 @@ function setSessionCookie(c: any, token: string): void {
   c.header("Set-Cookie", flags.join("; "));
 }
 
-function clearSessionCookie(c: any): void {
+function clearSessionCookie(c: Context): void {
   const flags = [
     `${COOKIE_NAME}=`,
     `Path=/`,
@@ -109,7 +130,7 @@ function clearSessionCookie(c: any): void {
 }
 
 /** Extract JWT from cookie or Authorization header (backwards compat) */
-export function extractJWT(c: any): string | null {
+export function extractJWT(c: Context): string | null {
   // 1. Check httpOnly cookie first (secure path)
   const cookieHeader = c.req.header("cookie") ?? "";
   const match = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
@@ -229,7 +250,7 @@ class UserStore {
     const id  = `usr_ml_${normalized.replace(/[^a-z0-9]/g,"").slice(0,20)}`;
     const now = Date.now();
     // Check if user exists by email (may have been created via OAuth with same email)
-    const byEmail = this.db.prepare("SELECT * FROM users WHERE email=? LIMIT 1").get(normalized) as any;
+    const byEmail = this.db.prepare("SELECT * FROM users WHERE email=? LIMIT 1").get(normalized) as UserRow | null;
     if (byEmail) {
       this.db.prepare("UPDATE users SET last_seen_at=? WHERE id=?").run(now, byEmail.id);
       const methods: string[] = (() => { try { return JSON.parse(byEmail.auth_methods ?? "[]"); } catch { return []; } })();
@@ -264,7 +285,7 @@ class UserStore {
     const col     = chain === "evm" ? "evm_address" : "solana_address";
     const id      = `usr_${chain}_${address.slice(2,10).toLowerCase()}`;
     const now     = Date.now();
-    const existing = this.db.prepare(`SELECT * FROM users WHERE ${col}=?`).get(address) as any;
+    const existing = this.db.prepare(`SELECT * FROM users WHERE ${col}=?`).get(address) as UserRow | null;
     if (existing) {
       this.db.prepare("UPDATE users SET last_seen_at=? WHERE id=?").run(now, existing.id);
       return this.row(existing);
@@ -288,34 +309,41 @@ class UserStore {
   }
 
   get(id: string): SovereignUser | null {
-    const r = this.db.prepare("SELECT * FROM users WHERE id=?").get(id) as any;
+    const r = this.db.prepare("SELECT * FROM users WHERE id=?").get(id) as UserRow | null;
     return r ? this.row(r) : null;
   }
 
   list(opts: { limit?: number; offset?: number } = {}): SovereignUser[] {
     return (this.db.prepare(
       "SELECT * FROM users ORDER BY last_seen_at DESC LIMIT ? OFFSET ?"
-    ).all(opts.limit ?? 100, opts.offset ?? 0) as any[]).map(r => this.row(r));
+    ).all(opts.limit ?? 100, opts.offset ?? 0) as UserRow[]).map(r => this.row(r));
   }
 
   updateRole(id: string, role: UserRole) { this.db.prepare("UPDATE users SET role=? WHERE id=?").run(role,id); }
   updatePlan(id: string, plan: UserPlan) { this.db.prepare("UPDATE users SET plan=? WHERE id=?").run(plan,id); }
 
   stats() {
-    const total = (this.db.prepare("SELECT COUNT(*) AS n FROM users").get() as any).n;
+    const total = (this.db.prepare("SELECT COUNT(*) AS n FROM users").get() as CountRow).n;
     const byRole = Object.fromEntries(
-      (this.db.prepare("SELECT role,COUNT(*) AS n FROM users GROUP BY role").all() as any[])
+      (this.db.prepare("SELECT role,COUNT(*) AS n FROM users GROUP BY role").all() as RoleCountRow[])
         .map(r => [r.role, r.n])
     );
     return { total, byRole };
   }
 
-  private row(r: any): SovereignUser {
+  private row(r: UserRow): SovereignUser {
     return {
-      id:r.id, email:r.email, displayName:r.display_name,
-      role:r.role, plan:r.plan, authMethods:(() => { try { return JSON.parse(r.auth_methods??"[]"); } catch { return []; } })(),
-      evmAddress:r.evm_address, solanaAddress:r.solana_address,
-      avatarUrl:r.avatar_url, createdAt:r.created_at, lastSeenAt:r.last_seen_at,
+      id:            r.id,
+      email:         r.email ?? undefined,
+      displayName:   r.display_name,
+      role:          r.role as UserRole,
+      plan:          r.plan as UserPlan,
+      authMethods:   (() => { try { return JSON.parse(r.auth_methods ?? "[]"); } catch { return []; } })(),
+      evmAddress:    r.evm_address ?? undefined,
+      solanaAddress: r.solana_address ?? undefined,
+      avatarUrl:     r.avatar_url ?? undefined,
+      createdAt:     r.created_at,
+      lastSeenAt:    r.last_seen_at,
     };
   }
 
@@ -336,10 +364,10 @@ export function registerAuthRoutes(
   const dataDir = cfg.dataDir ?? "./data/platform";
   const users   = new UserStore(dataDir);
   const rpId    = new URL(cfg.appUrl).hostname;
-  const clientIP = (c: any) =>
+  const clientIP = (c: Context) =>
     c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0] ?? "unknown";
 
-  const checkAdmin = async (c: any): Promise<boolean> => {
+  const checkAdmin = async (c: Context): Promise<boolean> => {
     if (cfg.adminToken && timingSafeEqual(c.req.header("x-sovereign-token") ?? "", cfg.adminToken)) return true;
     const b = c.req.header("authorization")?.slice(7);
     if (!b) return false;
@@ -386,11 +414,12 @@ export function registerAuthRoutes(
 
   //  PASSKEYS  REGISTER COMPLETE 
   app.post("/_sovereign/auth/passkeys/register/complete", async (c) => {
-    let body: any;
+    let body: Record<string, unknown>;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
-    const r = await passkeys.completeRegistration(body);
+    if (!body.challenge || !body.credentialId) return c.json({ error: "challenge and credentialId required" }, 400);
+    const r = await passkeys.completeRegistration(body as Parameters<typeof passkeys.completeRegistration>[0]);
     if (!r.ok) return c.json({ error: r.reason }, 400);
-    const user  = users.upsertFromPasskey(r.credentialId!, body._userId);
+    const user  = users.upsertFromPasskey(r.credentialId!, body._userId as string | undefined);
     const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
     void chain.emit("AUTH_SUCCESS", { userId:user.id, method:"passkey_register", ip:clientIP(c) }, "LOW");
     setSessionCookie(c, token);
@@ -407,9 +436,10 @@ export function registerAuthRoutes(
 
   //  PASSKEYS  LOGIN COMPLETE 
   app.post("/_sovereign/auth/passkeys/login/complete", async (c) => {
-    let body: any;
+    let body: Record<string, unknown>;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
-    const r = await passkeys.completeAuthentication(body);
+    if (!body.challenge || !body.credentialId) return c.json({ error: "challenge and credentialId required" }, 400);
+    const r = await passkeys.completeAuthentication(body as Parameters<typeof passkeys.completeAuthentication>[0]);
     if (!r.ok) {
       void chain.emit("AUTH_FAILURE", { method:"passkey", reason:r.reason, ip:clientIP(c) }, "MEDIUM");
       return c.json({ error: r.reason }, 401);
@@ -427,7 +457,7 @@ export function registerAuthRoutes(
     try {
       const { url } = await oauth.getAuthorizationUrl(provider, c.req.query("redirect") ?? "/");
       return c.redirect(url);
-    } catch (e: any) { return c.json({ error: e.message }, 400); }
+    } catch (e: unknown) { return c.json({ error: e instanceof Error ? e.message : "Unknown error" }, 400); }
   });
 
   //  OAUTH  CALLBACK 
@@ -448,16 +478,17 @@ export function registerAuthRoutes(
       const authCode = crypto.randomUUID();
       storeAuthCode(authCode, token);
       return c.redirect(`${cfg.appUrl}${redirectTo}?sovereign_code=${authCode}`);
-    } catch (e: any) {
-      void chain.emit("AUTH_FAILURE", { method:`oauth_${provider}`, reason:e.message, ip:clientIP(c) }, "MEDIUM");
-      return c.redirect(`${cfg.appUrl}/_sovereign/auth?error=${encodeURIComponent(e.message)}`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      void chain.emit("AUTH_FAILURE", { method:`oauth_${provider}`, reason:msg, ip:clientIP(c) }, "MEDIUM");
+      return c.redirect(`${cfg.appUrl}/_sovereign/auth?error=${encodeURIComponent(msg)}`);
     }
   });
 
   //  AUTH CODE EXCHANGE (for OAuth callback security)
   app.post("/_sovereign/auth/exchange", async (c) => {
-    const body = await c.req.json().catch(() => ({})) as any;
-    const code = body.code;
+    const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    const code = typeof body.code === "string" ? body.code : "";
     if (!code) return c.json({ error: "code required" }, 400);
     const token = consumeAuthCode(code);
     if (!token) {
@@ -471,10 +502,10 @@ export function registerAuthRoutes(
 
   //  SIWE  VERIFY 
   app.post("/_sovereign/auth/siwe/verify", async (c) => {
-    let body: any;
+    let body: Record<string, unknown>;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
     if (!body.message || !body.signature) return c.json({ error: "message and signature required" }, 400);
-    const r = await verifySIWE({ message: body.message, signature: body.signature });
+    const r = await verifySIWE({ message: body.message as string, signature: body.signature as string });
     if (!r.valid) {
       void chain.emit("AUTH_FAILURE", { method:"siwe", reason:r.reason, ip:clientIP(c) }, "MEDIUM");
       return c.json({ error: r.reason }, 401);
@@ -491,21 +522,21 @@ export function registerAuthRoutes(
 
   //  SOLANA  VERIFY 
   app.post("/_sovereign/auth/solana/verify", async (c) => {
-    let body: any;
+    let body: Record<string, unknown>;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
     if (!body.message || !body.signature || !body.publicKey) {
       return c.json({ error: "message, signature, and publicKey required" }, 400);
     }
-    const r = await verifySolanaSignature({ message:body.message, signature:body.signature, publicKey:body.publicKey });
+    const r = await verifySolanaSignature({ message:body.message as string, signature:body.signature as string, publicKey:body.publicKey as string });
     if (!r.valid) {
       void chain.emit("AUTH_FAILURE", { method:"solana", reason:r.reason, ip:clientIP(c) }, "MEDIUM");
       return c.json({ error: r.reason }, 401);
     }
-    const user  = users.upsertFromWallet(body.publicKey, "solana");
+    const user  = users.upsertFromWallet(body.publicKey as string, "solana");
     const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
-    void chain.emit("AUTH_SUCCESS", { userId:user.id, method:"solana", solanaAddress:body.publicKey, ip:clientIP(c) }, "LOW");
+    void chain.emit("AUTH_SUCCESS", { userId:user.id, method:"solana", solanaAddress:body.publicKey as string, ip:clientIP(c) }, "LOW");
     setSessionCookie(c, token);
-    return c.json({ token, user, address: body.publicKey });
+    return c.json({ token, user, address: body.publicKey as string });
   });
 
   //  ME
@@ -568,12 +599,12 @@ export function registerAuthRoutes(
   //  USERS  UPDATE (admin) 
   app.patch("/_sovereign/auth/users/:id", async (c) => {
     if (!await checkAdmin(c)) return c.json({ error: "admin required" }, 403);
-    let body: any;
+    let body: Record<string, unknown>;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
     const uid = c.req.param("id");
-    if (body.role) users.updateRole(uid, body.role);
-    if (body.plan) users.updatePlan(uid, body.plan);
-    void chain.emit("PERMISSION_CHANGE", { targetUserId:uid, role:body.role, plan:body.plan }, "MEDIUM");
+    if (body.role) users.updateRole(uid, body.role as UserRole);
+    if (body.plan) users.updatePlan(uid, body.plan as UserPlan);
+    void chain.emit("PERMISSION_CHANGE", { targetUserId:uid, role:body.role as string, plan:body.plan as string }, "MEDIUM");
     const user = users.get(uid);
     return user ? c.json({ user }) : c.json({ error: "not found" }, 404);
   });
@@ -587,7 +618,7 @@ export function registerAuthRoutes(
   //  TOTP 2FA MANAGEMENT
 
   // Helper: extract user from JWT (cookie or header)
-  const requireJWT = async (c: any): Promise<{ sub: string; role: string } | null> => {
+  const requireJWT = async (c: Context): Promise<{ sub: string; role: string } | null> => {
     const b = extractJWT(c);
     if (!b) return null;
     const { valid, payload } = await verifyJWT(b, cfg.jwtSecret);
@@ -610,10 +641,10 @@ export function registerAuthRoutes(
     const payload = await requireJWT(c);
     if (!payload) return c.json({ error: "Bearer token required" }, 401);
     if (!totpService) return c.json({ error: "TOTP not configured" }, 503);
-    let body: any;
+    let body: Record<string, unknown>;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
     if (!body.code) return c.json({ error: "code required" }, 400);
-    const result = await totpService.confirm(payload.sub, body.code);
+    const result = await totpService.confirm(payload.sub, body.code as string);
     if (!result.ok) return c.json({ error: result.error }, 400);
     void chain.emit("AUTH_SUCCESS", { userId: payload.sub, method: "totp_enabled", ip: clientIP(c) }, "LOW");
     return c.json({ ok: true, backupCodes: result.backupCodes });
@@ -635,10 +666,10 @@ export function registerAuthRoutes(
     const payload = await requireJWT(c);
     if (!payload) return c.json({ error: "Bearer token required" }, 401);
     if (!totpService) return c.json({ error: "TOTP not configured" }, 503);
-    let body: any;
+    let body: Record<string, unknown>;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
     if (!body.code) return c.json({ error: "code required" }, 400);
-    const result = await totpService.disable(payload.sub, body.code);
+    const result = await totpService.disable(payload.sub, body.code as string);
     if (!result.ok) return c.json({ error: result.error }, 400);
     void chain.emit("AUTH_SUCCESS", { userId: payload.sub, method: "totp_disabled", ip: clientIP(c) }, "LOW");
     return c.json({ ok: true });
@@ -649,10 +680,10 @@ export function registerAuthRoutes(
     const payload = await requireJWT(c);
     if (!payload) return c.json({ error: "Bearer token required" }, 401);
     if (!totpService) return c.json({ error: "TOTP not configured" }, 503);
-    let body: any;
+    let body: Record<string, unknown>;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
     if (!body.code) return c.json({ error: "TOTP code required" }, 400);
-    const result = await totpService.regenerateBackupCodes(payload.sub, body.code);
+    const result = await totpService.regenerateBackupCodes(payload.sub, body.code as string);
     if (!result.ok) return c.json({ error: result.error }, 400);
     return c.json({ ok: true, backupCodes: result.backupCodes });
   });
@@ -661,9 +692,9 @@ export function registerAuthRoutes(
 
   //  SIGNIN  Request code (email login)
   app.post("/_sovereign/signin", async (c) => {
-    let body: any;
+    let body: Record<string, unknown>;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
-    const email = body.email?.trim()?.toLowerCase();
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     if (!email) return c.json({ error: "email required" }, 400);
 
     if (!magicLink) {
@@ -679,10 +710,10 @@ export function registerAuthRoutes(
 
   //  SIGNIN  Verify code
   app.post("/_sovereign/signin/verify", async (c) => {
-    let body: any;
+    let body: Record<string, unknown>;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
-    const email = body.email?.trim()?.toLowerCase();
-    const code  = body.code?.trim();
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const code  = typeof body.code === "string" ? body.code.trim() : "";
     if (!email || !code) return c.json({ error: "email and code required" }, 400);
 
     if (!magicLink) {
@@ -731,7 +762,7 @@ export function registerAuthRoutes(
   //  PORTAL PAGE
   app.get("/_sovereign/auth", (c) => {
     const providers = oauth.getSupportedProviders();
-    const nonce = (c as any).get("cspNonce") ?? "";
+    const nonce = (c.get("cspNonce" as never) as string | undefined) ?? "";
     return c.html(`<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sovereignly  Sign In</title>

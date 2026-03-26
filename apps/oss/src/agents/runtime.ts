@@ -13,6 +13,7 @@
 import type { EventBus, SovereignEvent } from "../events/bus.ts";
 import type { PolicyEngine } from "../policies/engine.ts";
 import type { WorkflowEngine } from "../workflows/engine.ts";
+import { log } from "../observability/index.ts";
 
 // -- Types --
 
@@ -136,7 +137,7 @@ export class AgentRuntime {
     if (inst.def.schedule && inst.def.schedule > 0) {
       inst.timer = setInterval(() => {
         this.run(agentId).catch(err =>
-          console.warn(`[Agent] ${agentId} scheduled run failed:`, err.message)
+          log("warn", "Agent scheduled run failed", { agentId, error: err.message })
         );
       }, inst.def.schedule);
     }
@@ -146,7 +147,7 @@ export class AgentRuntime {
       for (const eventType of inst.def.events) {
         const subId = this.bus.on(eventType, () => {
           this.run(agentId).catch(err =>
-            console.warn(`[Agent] ${agentId} event-triggered run failed:`, err.message)
+            log("warn", "Agent event-triggered run failed", { agentId, eventType, error: err.message })
           );
         }, `agent:${agentId}`);
         inst.eventSubId = subId; // store last one (simplified)

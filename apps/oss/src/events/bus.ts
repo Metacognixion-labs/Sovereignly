@@ -9,6 +9,7 @@
 
 import { Database } from "bun:sqlite";
 import { join }     from "node:path";
+import { log } from "../observability/index.ts";
 
 // -- Event types from EVENTS.md + existing chain types --
 
@@ -167,12 +168,12 @@ export class EventBus {
         const result = sub.handler(event);
         if (result instanceof Promise) {
           await result.catch(err => {
-            console.warn(`[EventBus] Subscriber ${sub.source} error:`, err.message);
+            log("warn", "EventBus subscriber error", { subscriber: sub.source, error: err.message });
             failed = true;
           });
         }
       } catch (err: any) {
-        console.warn(`[EventBus] Subscriber ${sub.source} threw:`, err.message);
+        log("warn", "EventBus subscriber threw", { subscriber: sub.source, error: err.message });
         failed = true;
       }
     }
@@ -195,7 +196,7 @@ export class EventBus {
       "SELECT * FROM outbox WHERE dispatched = 0 AND attempts < 5 ORDER BY ts ASC LIMIT 100"
     ).all() as any[];
     if (pending.length > 0) {
-      console.log(`[EventBus] Replaying ${pending.length} un-dispatched events from outbox`);
+      log("info", "Replaying un-dispatched events from outbox", { count: pending.length });
       for (const row of pending) {
         const event: SovereignEvent = {
           id: row.id, type: row.type, ts: row.ts, source: row.source,

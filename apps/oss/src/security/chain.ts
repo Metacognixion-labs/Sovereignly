@@ -32,6 +32,7 @@ import {
   MerkleTree, IncrementalMerkleTree, toHex, fromHex,
 } from "./crypto.ts";
 import { sha3Hash } from "./pqc.ts";
+import { log } from "../observability/index.ts";
 
 //  Event Types 
 
@@ -222,7 +223,7 @@ export class SovereignChain {
     // Start block sealing timer
     this.timer = setInterval(() => this.sealIfDue(), this.cfg.blockIntervalMs);
 
-    console.log(`[Chain] SovereignChain ready  tip block #${this.getTip()?.index ?? 0}`);
+    log("info", "SovereignChain ready", { tipBlock: this.getTip()?.index ?? 0 });
   }
 
   //  Public API: emit an audit event 
@@ -396,16 +397,16 @@ export class SovereignChain {
           this.cfg.anchorOrgId ?? this.cfg.nodeId
         ).then(result => {
           const chains = result.receipts.map(r => r.chain).join("+");
-          if (chains) console.log(`[Chain]  Omnichain anchor #${block.index}  ${chains}`);
+          if (chains) log("info", "Omnichain anchor sealed", { blockIndex: block.index, chains });
           if (Object.keys(result.errors).length > 0) {
-            console.warn(`[Chain] Anchor errors:`, result.errors);
+            log("warn", "Anchor errors", { blockIndex: block.index, errors: result.errors });
           }
-        }).catch(e => console.warn("[Chain] Omnichain anchor failed:", e.message));
+        }).catch(e => log("warn", "Omnichain anchor failed", { blockIndex: block.index, error: e.message }));
       }
       // Meridian cluster bus (NOT a credibility proof  MetaCognixion controls all validators)
       if (this.cfg.meridianRpcUrl && this.cfg.meridianContract) {
         this.anchorToMeridian(block).catch(e =>
-          console.warn("[Chain] Meridian bus relay failed:", e.message)
+          log("warn", "Meridian bus relay failed", { blockIndex: block.index, error: e.message })
         );
       }
     }
@@ -415,10 +416,10 @@ export class SovereignChain {
       this.replicateToPeers(block).catch(() => {});
     }
 
-    console.log(
-      `[Chain]  Block #${block.index} sealed  ${events.length} events` +
-      ` | root: ${merkleRoot.slice(0, 12)} | pq: ${merkleRootPQ.slice(0, 12)}`
-    );
+    log("info", "Block sealed", {
+      blockIndex: block.index, eventCount: events.length,
+      merkleRoot: merkleRoot.slice(0, 12), pqRoot: merkleRootPQ.slice(0, 12),
+    });
 
     return block;
   }
@@ -483,9 +484,10 @@ export class SovereignChain {
       // Mark block as anchored
       this.db.prepare("UPDATE blocks SET anchored = 1 WHERE idx = ?").run(block.index);
 
-      console.log(`[Chain]  Anchored block #${block.index} to Meridian  ${txHash}`);
-    } catch (err: any) {
-      console.warn(`[Chain] Meridian anchor skipped: ${err.message}`);
+      log("info", "Anchored block to Meridian", { blockIndex: block.index, txHash });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      log("warn", "Meridian anchor skipped", { blockIndex: block.index, error: message });
     }
   }
 
@@ -537,10 +539,9 @@ export class SovereignChain {
              event_count AS eventCount, node_id AS nodeId, signature, block_hash AS blockHash,
              acks
       FROM blocks ORDER BY idx DESC LIMIT 1
-    `).get() as any;
+    `).get() as { index: number; ts: number; prevHash: string; merkleRoot: string; eventCount: number; nodeId: string; signature: string; blockHash: string; acks: string } | null;
     if (!row) return null;
-    row.acks = safeJsonParse(row.acks, []);
-    return row as Block;
+    return { ...row, acks: safeJsonParse(row.acks, []) } as Block;
   }
 
   getBlock(index: number): Block | null {
@@ -549,10 +550,9 @@ export class SovereignChain {
              event_count AS eventCount, node_id AS nodeId, signature, block_hash AS blockHash,
              acks
       FROM blocks WHERE idx = ?
-    `).get(index) as any;
+    `).get(index) as { index: number; ts: number; prevHash: string; merkleRoot: string; eventCount: number; nodeId: string; signature: string; blockHash: string; acks: string } | null;
     if (!row) return null;
-    row.acks = safeJsonParse(row.acks, []);
-    return row as Block;
+    return { ...row, acks: safeJsonParse(row.acks, []) } as Block;
   }
 
   getEvents(opts: {
@@ -573,10 +573,17 @@ export class SovereignChain {
 
     const rows = this.reader.prepare(`
       SELECT * FROM events ${where} ORDER BY ts DESC LIMIT ?
-    `).all(...(params as any[]), limit) as any[];
+    `).all(...(params as (string | number)[]), limit) as Array<{
+      id: string; type: string; ts: number; node_id: string; severity: string;
+      payload: string; block_idx: number | null; merkle_proof: string | null;
+    }>;
 
     return rows.map(r => ({
-      ...r,
+      id:          r.id,
+      type:        r.type as AuditEventType,
+      ts:          r.ts,
+      nodeId:      r.node_id,
+      severity:    r.severity as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
       payload:     safeJsonParse(r.payload, {}),
       merkleProof: r.merkle_proof ?? undefined,
       blockIndex:  r.block_idx    ?? undefined,
@@ -591,14 +598,18 @@ export class SovereignChain {
   } = {}): Block[] {
     const { limit = 20, offset = 0, since } = opts;
     let sql  = "SELECT * FROM blocks";
-    const params: any[] = [];
+    const params: (string | number)[] = [];
     if (since !== undefined) {
       sql += " WHERE ts >= ?";
       params.push(since);
     }
     sql += " ORDER BY idx DESC LIMIT ? OFFSET ?";
     params.push(limit, offset);
-    return (this.reader.prepare(sql).all(...(params as any[])) as any[]).map(row => ({
+    return (this.reader.prepare(sql).all(...params) as Array<{
+      idx: number; ts: number; prev_hash: string; block_hash: string;
+      merkle_root: string; event_count: number; node_id: string;
+      signature: string; acks: string | null; anchored_at: number | null;
+    }>).map(row => ({
       index:      row.idx,
       ts:         row.ts,
       prevHash:   row.prev_hash,
@@ -613,10 +624,10 @@ export class SovereignChain {
   }
 
   getStats() {
-    const blocks     = (this.reader.prepare("SELECT COUNT(*) AS n FROM blocks").get() as any).n;
-    const events     = (this.reader.prepare("SELECT COUNT(*) AS n FROM events").get() as any).n;
-    const anchored   = (this.reader.prepare("SELECT COUNT(*) AS n FROM blocks WHERE anchored=1").get() as any).n;
-    const critical   = (this.reader.prepare("SELECT COUNT(*) AS n FROM events WHERE severity='CRITICAL'").get() as any).n;
+    const blocks     = (this.reader.prepare("SELECT COUNT(*) AS n FROM blocks").get() as { n: number }).n;
+    const events     = (this.reader.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number }).n;
+    const anchored   = (this.reader.prepare("SELECT COUNT(*) AS n FROM blocks WHERE anchored=1").get() as { n: number }).n;
+    const critical   = (this.reader.prepare("SELECT COUNT(*) AS n FROM events WHERE severity='CRITICAL'").get() as { n: number }).n;
     const tip        = this.getTip();
 
     return { blocks, events, anchored, critical, tip };
@@ -694,7 +705,7 @@ export class SovereignChain {
     } catch (err) {
       // Encryption was configured but failed — this is a security violation.
       // Log critical warning and throw rather than silently storing plaintext.
-      console.error("[CRITICAL] Payload encryption failed — refusing to store plaintext when encryption is configured:", err);
+      log("error", "Payload encryption failed — refusing to store plaintext when encryption is configured", { error: err instanceof Error ? err.message : String(err) });
       throw new Error("Encryption failed: refusing to store unencrypted payload when encryption key is configured");
     }
   }

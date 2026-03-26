@@ -17,6 +17,7 @@
  */
 
 import type { SovereignKV } from "../kv/index.ts";
+import { log } from "../observability/index.ts";
 
 export interface FunctionRecord {
   id: string;
@@ -215,7 +216,7 @@ export class WorkerPool {
     private readonly kv: SovereignKV
   ) {
     this.spawn(poolSize);
-    console.log(`[Runtime] Worker pool: ${poolSize} workers pre-warmed`);
+    log("info", "Worker pool pre-warmed", { poolSize });
   }
 
   private spawn(count: number) {
@@ -227,7 +228,7 @@ export class WorkerPool {
 
       worker.onmessage = (e: MessageEvent) => this.handleMessage(id, e.data);
       worker.onerror = (e: ErrorEvent) => {
-        console.error(`[Runtime] Worker ${id} error:`, e.message);
+        log("error", "Worker error", { workerId: id, error: e.message });
         this.replaceWorker(id);
       };
 
@@ -357,7 +358,7 @@ export class SovereignRuntime {
     };
     this.functions.set(fn.id, record);
     this.latencyHistory.set(fn.id, []);
-    console.log(`[Runtime] Registered: ${fn.name}  ${fn.route} [${fn.methods.join('|')}]`);
+    log("info", "Function registered", { name: fn.name, route: fn.route, methods: fn.methods });
     return record;
   }
 

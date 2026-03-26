@@ -11,6 +11,7 @@
 //
 
 import type { SovereignRuntime } from "../runtime/index.ts";
+import { log } from "../observability/index.ts";
 
 export interface ScheduledFunction {
   id: string;
@@ -114,7 +115,7 @@ export class SovereignScheduler {
       this.timer = setInterval(() => this.tick(), 60_000);
     }, msToNextMinute);
 
-    console.log("[Scheduler] Ready");
+    log("info", "Scheduler ready");
   }
 
   schedule(fnId: string, cron: string, id?: string): ScheduledFunction {
@@ -132,7 +133,7 @@ export class SovereignScheduler {
       errorCount: 0,
     };
     this.schedules.set(schedId, entry);
-    console.log(`[Scheduler] Scheduled ${fnId} @ "${cron}" -> next: ${entry.nextRunAt.toISOString()}`);
+    log("info", "Function scheduled", { functionId: fnId, cron, nextRunAt: entry.nextRunAt.toISOString() });
     return entry;
   }
 
@@ -165,11 +166,11 @@ export class SovereignScheduler {
         s.lastRanAt = new Date();
         s.nextRunAt = nextOccurrence(s.cron);
         if (res.status >= 500) s.errorCount++;
-        console.log(`[Scheduler] ${s.id} -> ${res.status} (${res.ms.toFixed(1)}ms)`);
+        log("info", "Scheduled function executed", { scheduleId: s.id, status: res.status, durationMs: parseFloat(res.ms.toFixed(1)) });
       }).catch((err) => {
         s.errorCount++;
         s.nextRunAt = nextOccurrence(s.cron);
-        console.error(`[Scheduler] ${s.id} failed:`, err.message);
+        log("error", "Scheduled function failed", { scheduleId: s.id, error: err.message });
       });
     }
   }

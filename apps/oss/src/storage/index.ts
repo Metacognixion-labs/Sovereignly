@@ -11,6 +11,7 @@ import { join, dirname } from "node:path";
 import { mkdir, unlink, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import crypto from "node:crypto";
+import { log } from "../observability/index.ts";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS objects (
@@ -52,6 +53,19 @@ export interface ObjectMeta {
   meta: Record<string, string>;
 }
 
+/** Raw row shape from the `objects` SQLite table */
+interface ObjectRow {
+  bucket: string;
+  key: string;
+  size: number;
+  etag: string;
+  mime: string;
+  created: number;
+  modified: number;
+  tags: string | null;
+  meta: string | null;
+}
+
 export class SovereignStorage {
   private db: Database;
   private basePath: string;
@@ -64,7 +78,7 @@ export class SovereignStorage {
 
     this.db = new Database(join(this.basePath, "meta.sqlite"), { create: true });
     this.db.exec(SCHEMA);
-    console.log("[Storage] Object store ready");
+    log("info", "Object store ready");
   }
 
   //  Buckets 
@@ -81,7 +95,7 @@ export class SovereignStorage {
 
   deleteBucket(name: string, force = false) {
     if (!force) {
-      const count = (this.db.prepare("SELECT COUNT(*) as c FROM objects WHERE bucket = $name").get({ name }) as any)?.c ?? 0;
+      const count = (this.db.prepare("SELECT COUNT(*) as c FROM objects WHERE bucket = $name").get({ name }) as { c: number } | null)?.c ?? 0;
       if (count > 0) throw new Error(`Bucket '${name}' is not empty`);
     }
     this.db.prepare("DELETE FROM objects WHERE bucket = $name").run({ name });
@@ -91,7 +105,9 @@ export class SovereignStorage {
   }
 
   listBuckets() {
-    return this.db.prepare("SELECT * FROM buckets").all() as any[];
+    return this.db.prepare("SELECT * FROM buckets").all() as Array<{
+      name: string; public: number; versioned: number; config: string | null;
+    }>;
   }
 
   //  Objects 
@@ -174,12 +190,12 @@ export class SovereignStorage {
       bucket,
       prefix: options.prefix ?? null,
       limit: options.limit ?? 1000,
-    }) as any[];
+    }) as ObjectRow[];
     return rows.map(this.rowToMeta);
   }
 
   head(bucket: string, key: string): ObjectMeta | null {
-    const row = this.db.prepare("SELECT * FROM objects WHERE bucket = $bucket AND key = $key").get({ bucket, key }) as any;
+    const row = this.db.prepare("SELECT * FROM objects WHERE bucket = $bucket AND key = $key").get({ bucket, key }) as ObjectRow | null;
     return row ? this.rowToMeta(row) : null;
   }
 
@@ -246,7 +262,7 @@ export class SovereignStorage {
     if (!exists) this.createBucket(name);
   }
 
-  private rowToMeta(row: any): ObjectMeta {
+  private rowToMeta(row: ObjectRow): ObjectMeta {
     return {
       bucket: row.bucket,
       key: row.key,
