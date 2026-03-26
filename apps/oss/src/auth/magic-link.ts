@@ -95,8 +95,8 @@ export class MagicLinkService {
     // Invalidate old active codes
     const active = this.db.prepare(
       "SELECT COUNT(*) AS n FROM magic_codes WHERE email=? AND used=0 AND expires_at>?"
-    ).get(normalized, now) as any;
-    if (active.n >= MAX_ACTIVE_CODES) {
+    ).get(normalized, now) as { n: number } | null;
+    if (active && active.n >= MAX_ACTIVE_CODES) {
       this.db.prepare("UPDATE magic_codes SET used=1 WHERE email=? AND used=0").run(normalized);
     }
 
@@ -150,7 +150,7 @@ export class MagicLinkService {
 
     const row = this.db.prepare(
       "SELECT id FROM magic_codes WHERE email=? AND code_hash=? AND purpose=? AND used=0 AND expires_at>? LIMIT 1"
-    ).get(normalized, codeHash, purpose, now) as any;
+    ).get(normalized, codeHash, purpose, now) as { id: string } | null;
 
     if (!row) return { valid: false, error: "Invalid or expired code" };
 
@@ -179,7 +179,7 @@ export class MagicLinkService {
     // Look up in DB
     const row = this.db.prepare(
       "SELECT id, email, purpose, expires_at FROM magic_codes WHERE id=? AND token=? AND used=0 LIMIT 1"
-    ).get(parsed.id, token) as any;
+    ).get(parsed.id, token) as { id: string; email: string; purpose: string; expires_at: number } | null;
 
     if (!row) return { valid: false, error: "Invalid or expired link" };
     if (row.expires_at < now) return { valid: false, error: "Link has expired" };

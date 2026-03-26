@@ -8,6 +8,8 @@
  * Console: logs codes/links to stdout (dev mode)
  */
 
+import { log } from "../observability/index.ts";
+
 export interface EmailTransport {
   send(to: string, subject: string, html: string, text?: string): Promise<void>;
 }
@@ -38,8 +40,8 @@ export class ResendTransport implements EmailTransport {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
-      console.error(`[Resend] Failed to send email to ${to}:`, err);
-      throw new Error(`Email delivery failed: ${(err as any).message ?? res.statusText}`);
+      log("error", "Resend email delivery failed", { to, status: res.status });
+      throw new Error(`Email delivery failed: ${(err as Record<string, unknown>).message ?? res.statusText}`);
     }
   }
 }
@@ -50,12 +52,14 @@ export class ConsoleTransport implements EmailTransport {
   async send(to: string, subject: string, _html: string, text?: string) {
     const code = text?.match(/\b(\d{6})\b/)?.[1];
     const link = text?.match(/(https?:\/\/\S+verify\S+)/)?.[1];
-    console.log(`\n${"═".repeat(60)}`);
-    console.log(`  EMAIL → ${to}`);
-    console.log(`  Subject: ${subject}`);
-    if (link) console.log(`  Magic Link: ${link}`);
-    if (code) console.log(`  Code: ${code}`);
-    console.log(`${"═".repeat(60)}\n`);
+    log("info", "Email sent (console transport)", {
+      to,
+      subject,
+      hasCode: !!code,
+      hasLink: !!link,
+      // Only log code/link in non-production (security: don't leak auth codes to logs)
+      ...(process.env.NODE_ENV !== "production" ? { code, link } : {}),
+    });
   }
 }
 
@@ -124,14 +128,14 @@ export function createEmailTransport(): EmailTransport {
   const resendKey = process.env.RESEND_API_KEY;
   if (resendKey) {
     const from = process.env.EMAIL_FROM ?? "Sovereignly <noreply@sovereignly.io>";
-    console.log("[Email] Using Resend transport");
+    log("info", "Email transport initialized", { provider: "resend" });
     return new ResendTransport(resendKey, from);
   }
 
   // Priority 2: SMTP
   const smtpHost = process.env.SMTP_HOST;
   if (smtpHost) {
-    console.log(`[Email] Using SMTP transport → ${smtpHost}`);
+    log("info", "Email transport initialized", { provider: "smtp", host: smtpHost });
     return new SmtpTransport(
       smtpHost,
       parseInt(process.env.SMTP_PORT ?? "587"),
@@ -142,6 +146,6 @@ export function createEmailTransport(): EmailTransport {
   }
 
   // Priority 3: Console (dev)
-  console.log("[Email] No RESEND_API_KEY or SMTP_HOST — using ConsoleTransport (codes logged to stdout)");
+  log("warn", "Email transport initialized", { provider: "console", note: "No RESEND_API_KEY or SMTP_HOST — codes logged to stdout" });
   return new ConsoleTransport();
 }

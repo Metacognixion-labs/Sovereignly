@@ -138,10 +138,12 @@ export class SovereignChain {
     this.db.run("PRAGMA cache_size = -64000");
     this.db.run("PRAGMA busy_timeout = 5000");
     this.db.run("PRAGMA temp_store = MEMORY");
+    this.db.run("PRAGMA mmap_size = 268435456"); // 256MB mmap for faster reads on large chains
 
     // Reader connection tuning (read-only, no WAL checkpoint)
     this.reader.run("PRAGMA cache_size = -64000");
     this.reader.run("PRAGMA temp_store = MEMORY");
+    this.reader.run("PRAGMA mmap_size = 268435456");
 
     this.db.run(`
       CREATE TABLE IF NOT EXISTS blocks (
@@ -368,13 +370,19 @@ export class SovereignChain {
       block.signature, block.blockHash
     );
 
-    // Attach Merkle proofs to events
-    for (let i = 0; i < events.length; i++) {
-      const proof = await tree.proof(i);
-      this.db.prepare(`
-        UPDATE events SET block_idx = ?, merkle_proof = ? WHERE id = ?
-      `).run(block.index, JSON.stringify(proof), events[i].id);
-    }
+    // Attach Merkle proofs to events — parallel proof generation, batched DB writes
+    const proofs = await Promise.all(
+      events.map((_, i) => tree.proof(i))
+    );
+    const updateStmt = this.db.prepare(
+      `UPDATE events SET block_idx = ?, merkle_proof = ? WHERE id = ?`
+    );
+    const batchUpdate = this.db.transaction(() => {
+      for (let i = 0; i < events.length; i++) {
+        updateStmt.run(block.index, JSON.stringify(proofs[i]), events[i].id);
+      }
+    });
+    batchUpdate();
 
     this.onBlockSealed.forEach(fn => fn(block));
 

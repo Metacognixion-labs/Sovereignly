@@ -8,7 +8,7 @@ import { timingSafeEqual } from "../security/crypto.ts";
 // POST /v1/agents/:id/stop        Stop agent
 // GET  /v1/agents/stats           Runtime statistics
 
-import type { Hono } from "hono";
+import type { Hono, Context } from "hono";
 import type { AgentRuntime } from "./runtime.ts";
 import type { EventBus } from "../events/bus.ts";
 
@@ -19,7 +19,7 @@ export function registerAgentRoutes(
   opts:    { adminToken?: string }
 ) {
 
-  function requireAuth(c: any): { ok: boolean; role: string } {
+  function requireAuth(c: Context): { ok: boolean; role: string } {
     const token = c.req.header("x-sovereign-token")?.replace("Bearer ", "")
                ?? c.req.header("authorization")?.slice(7);
     if (!token) return { ok: false, role: "" };
@@ -32,14 +32,15 @@ export function registerAgentRoutes(
     const auth = requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
 
-    const body = await c.req.json().catch(() => ({})) as any;
-    if (!body.agentId) return c.json({ error: "agentId required" }, 400);
+    const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    if (!body.agentId || typeof body.agentId !== "string") return c.json({ error: "agentId required" }, 400);
 
     try {
       const report = await runtime.run(body.agentId);
       return c.json(report);
-    } catch (err: any) {
-      return c.json({ error: err.message }, 400);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message }, 400);
     }
   });
 
@@ -49,7 +50,7 @@ export function registerAgentRoutes(
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
 
     const { status, tenantId } = c.req.query();
-    const list = runtime.list({ status: status as any, tenantId });
+    const list = runtime.list({ status: status as "registered" | "running" | "idle" | "stopped" | "failed" | undefined, tenantId });
     return c.json({ count: list.length, agents: list });
   });
 
@@ -85,8 +86,8 @@ export function registerAgentRoutes(
     try {
       runtime.start(c.req.param("id"));
       return c.json({ ok: true, status: "running" });
-    } catch (err: any) {
-      return c.json({ error: err.message }, 400);
+    } catch (err: unknown) {
+      return c.json({ error: err instanceof Error ? err.message : "Unknown error" }, 400);
     }
   });
 

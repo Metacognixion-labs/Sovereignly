@@ -68,7 +68,16 @@ const PROVIDERS: Record<OAuthProvider, ProviderConfig> = {
   },
 };
 
-//  State store (PKCE + CSRF) 
+import type { SovereignKV } from "../kv/index.ts";
+
+// Pluggable state store — defaults to in-memory, can be backed by SovereignKV
+let _kvStore: SovereignKV | null = null;
+const OAUTH_STATE_NS = "auth:oauth:state";
+
+/** Call once at boot to enable persistent OAuth state storage via SovereignKV */
+export function initOAuthStore(kv: SovereignKV): void { _kvStore = kv; }
+
+//  State store (PKCE + CSRF — KV-backed for persistence)
 
 interface OAuthState {
   provider:    OAuthProvider;
@@ -77,8 +86,9 @@ interface OAuthState {
   expiresAt:   number;
 }
 
-const stateStore = new Map<string, OAuthState>();
-const STATE_TTL  = 10 * 60 * 1000; // 10 minutes
+const _memStateStore = new Map<string, OAuthState>();
+const STATE_TTL      = 10 * 60 * 1000; // 10 minutes
+const STATE_TTL_SECS = 600;
 
 //  PKCE helpers 
 
@@ -131,16 +141,20 @@ export class OAuthBroker {
     const codeVerifier = await generateCodeVerifier();
     const challenge    = await generateCodeChallenge(codeVerifier);
 
-    stateStore.set(state, {
+    const stateData: OAuthState = {
       provider, redirectTo, codeVerifier,
       expiresAt: Date.now() + STATE_TTL,
-    });
+    };
 
-    // Cleanup stale states
-    if (stateStore.size > 1000) {
-      const now = Date.now();
-      for (const [k, v] of stateStore) {
-        if (v.expiresAt < now) stateStore.delete(k);
+    if (_kvStore) {
+      _kvStore._set(OAUTH_STATE_NS, state, JSON.stringify(stateData), { ttl: STATE_TTL_SECS });
+    } else {
+      _memStateStore.set(state, stateData);
+      if (_memStateStore.size > 1000) {
+        const now = Date.now();
+        for (const [k, v] of _memStateStore) {
+          if (v.expiresAt < now) _memStateStore.delete(k);
+        }
       }
     }
 
@@ -177,15 +191,24 @@ export class OAuthBroker {
     const creds = this.credentials[provider];
     if (!creds) throw new Error(`Provider not configured: ${provider}`);
 
-    // Verify state (CSRF protection)
-    const stateData = stateStore.get(state);
+    // Verify state (CSRF protection) — read from KV or in-memory
+    let stateData: OAuthState | null = null;
+    if (_kvStore) {
+      const raw = _kvStore._get(OAUTH_STATE_NS, state);
+      if (raw) {
+        try { stateData = JSON.parse(raw); } catch { stateData = null; }
+      }
+      _kvStore._delete(OAUTH_STATE_NS, state); // single-use
+    } else {
+      stateData = _memStateStore.get(state) ?? null;
+      _memStateStore.delete(state);
+    }
+
     if (!stateData) throw new Error("Invalid or expired OAuth state");
     if (stateData.provider !== provider) throw new Error("State provider mismatch");
     if (Date.now() > stateData.expiresAt) {
-      stateStore.delete(state);
       throw new Error("OAuth state expired");
     }
-    stateStore.delete(state);
 
     const cfg = PROVIDERS[provider];
 
@@ -252,7 +275,7 @@ export class OAuthBroker {
       }).catch(() => null);
 
       if (emailRes?.ok) {
-        const emails: any[] = await emailRes.json();
+        const emails = (await emailRes.json()) as Array<{ email: string; primary: boolean; verified: boolean }>;
         const primary = emails.find(e => e.primary && e.verified);
         if (primary) profile.email = primary.email;
       }

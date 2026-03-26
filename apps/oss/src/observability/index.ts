@@ -192,3 +192,86 @@ export function prometheusHandler(c: Context): Response {
     headers: { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" },
   });
 }
+
+// -- Error Capture Middleware (emits to SovereignChain) ------------------------
+
+export function errorCaptureMiddleware(chain: any): MiddlewareHandler {
+  return async (c: Context, next: Next) => {
+    try {
+      await next();
+
+      // Log 5xx responses as errors
+      if (c.res.status >= 500) {
+        const traceId = (c as any).get("traceId") ?? "unknown";
+        const path = new URL(c.req.url).pathname;
+        log("error", "Server error response", { traceId, path, status: c.res.status });
+        metrics.counter("sovereign_errors_total", "Total captured errors", { type: "http_5xx" });
+
+        void chain?.emit?.("ERROR", {
+          type:    "HTTP_5XX",
+          status:  c.res.status,
+          path,
+          traceId,
+        }, "HIGH");
+      }
+    } catch (err: any) {
+      // Uncaught exceptions in route handlers
+      const traceId = (c as any).get("traceId") ?? "unknown";
+      const path = new URL(c.req.url).pathname;
+
+      log("error", "Uncaught exception in request handler", {
+        traceId, path,
+        error: err.message,
+        stack: err.stack?.split("\n").slice(0, 5).join("\n"),
+      });
+
+      metrics.counter("sovereign_errors_total", "Total captured errors", { type: "uncaught" });
+
+      void chain?.emit?.("ERROR", {
+        type:    "UNCAUGHT_EXCEPTION",
+        path,
+        traceId,
+        error:   err.message,
+      }, "CRITICAL");
+
+      return c.json({ error: "Internal server error", requestId: traceId }, 500);
+    }
+  };
+}
+
+// -- Client-side error reporting endpoint ------------------------------------
+
+export function registerErrorReportingRoutes(app: any, chain: any): void {
+  // POST /_sovereign/errors/report — client-side error reports
+  app.post("/_sovereign/errors/report", async (c: Context) => {
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
+
+    const { message, stack, url, componentStack, digest } = body;
+    if (!message) return c.json({ error: "message required" }, 400);
+
+    const traceId = crypto.randomUUID();
+
+    log("error", "Client-side error report", {
+      traceId,
+      source: "frontend",
+      message,
+      url,
+      digest,
+    });
+
+    metrics.counter("sovereign_client_errors_total", "Total client-side error reports");
+
+    void chain?.emit?.("ERROR", {
+      type:     "CLIENT_ERROR",
+      source:   "frontend",
+      message,
+      url,
+      digest,
+      traceId,
+      hasStack: !!stack,
+    }, "MEDIUM");
+
+    return c.json({ ok: true, traceId });
+  });
+}

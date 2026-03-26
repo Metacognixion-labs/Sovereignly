@@ -21,8 +21,16 @@
 
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { sha256Raw }  from "../security/crypto.ts";
+import type { SovereignKV } from "../kv/index.ts";
 
-//  Types 
+// Pluggable nonce store — defaults to in-memory, can be backed by SovereignKV
+let _kvStore: SovereignKV | null = null;
+const SIWE_NONCE_NS = "auth:siwe:nonce";
+
+/** Call once at boot to enable persistent nonce storage via SovereignKV */
+export function initSIWEStore(kv: SovereignKV): void { _kvStore = kv; }
+
+//  Types
 
 export interface SIWEMessage {
   domain:    string;   // e.g. "app.sovereignly.io"
@@ -43,31 +51,48 @@ export interface SIWEVerifyResult {
   reason?:  string;
 }
 
-//  Nonce store (in-memory with TTL  replace with SovereignKV in production) 
+//  Nonce store (KV-backed for persistence + multi-instance, fallback to in-memory)
 
-const nonces = new Map<string, { expiresAt: number; used: boolean }>();
+const _memNonces = new Map<string, { expiresAt: number; used: boolean }>();
 const NONCE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const NONCE_TTL_SECS = 600; // 10 minutes for KV TTL
 
 export function generateNonce(): string {
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)))
     .map(b => b.toString(16).padStart(2, "0")).join("");
-  nonces.set(nonce, { expiresAt: Date.now() + NONCE_TTL_MS, used: false });
-  // Cleanup stale nonces
-  if (nonces.size > 10_000) {
-    const now = Date.now();
-    for (const [k, v] of nonces) {
-      if (v.expiresAt < now) nonces.delete(k);
+
+  if (_kvStore) {
+    // KV-backed: store with TTL (auto-expires, no GC needed)
+    _kvStore._set(SIWE_NONCE_NS, nonce, "valid", { ttl: NONCE_TTL_SECS });
+  } else {
+    // Fallback in-memory
+    _memNonces.set(nonce, { expiresAt: Date.now() + NONCE_TTL_MS, used: false });
+    if (_memNonces.size > 10_000) {
+      const now = Date.now();
+      for (const [k, v] of _memNonces) {
+        if (v.expiresAt < now) _memNonces.delete(k);
+      }
     }
   }
   return nonce;
 }
 
 function consumeNonce(nonce: string): { ok: boolean; reason?: string } {
-  const entry = nonces.get(nonce);
+  if (_kvStore) {
+    const val = _kvStore._get(SIWE_NONCE_NS, nonce);
+    if (!val)          return { ok: false, reason: "nonce not found" };
+    if (val === "used") return { ok: false, reason: "nonce already used" };
+    // Mark as used (keep briefly to prevent replay, then let TTL expire it)
+    _kvStore._set(SIWE_NONCE_NS, nonce, "used", { ttl: 60 }); // 60s grace
+    return { ok: true };
+  }
+
+  // Fallback in-memory
+  const entry = _memNonces.get(nonce);
   if (!entry)              return { ok: false, reason: "nonce not found" };
   if (entry.used)          return { ok: false, reason: "nonce already used" };
   if (Date.now() > entry.expiresAt) {
-    nonces.delete(nonce);
+    _memNonces.delete(nonce);
     return { ok: false, reason: "nonce expired" };
   }
   entry.used = true;

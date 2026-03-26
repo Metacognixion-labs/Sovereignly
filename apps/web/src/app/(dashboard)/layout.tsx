@@ -48,14 +48,16 @@ const NAV = [
   { label: "System",       href: "/admin/system",     icon: Server },
 ] as const;
 
-// Connection status indicator
+// Connection status indicator (EventSource sends cookies automatically for same-origin)
 function ConnectionStatus() {
   const [status, setStatus] = useState<"connected"|"reconnecting"|"offline">("offline");
 
   useEffect(() => {
     let es: EventSource | null = null;
     try {
-      es = new EventSource("/_sovereign/chain/stream");
+      // EventSource sends cookies for same-origin requests automatically
+      // Backend validates __sovereign_session cookie for auth
+      es = new EventSource("/_sovereign/chain/stream", { withCredentials: true });
       es.onopen = () => setStatus("connected");
       es.onerror = () => setStatus("reconnecting");
     } catch { setStatus("offline"); }
@@ -126,18 +128,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
 
-  // Auth gate — check if user has token or admin token
+  // Auth gate — verify session via httpOnly cookie (calls /auth/me)
   useEffect(() => {
-    const stored = localStorage.getItem("sovereignly-config");
-    if (stored) {
-      try {
-        const config = JSON.parse(stored);
-        if (config?.state?.adminToken || config?.state?.jwtToken) {
-          setIsAuthed(true);
-        }
-      } catch {}
-    }
-    setAuthChecked(true);
+    fetch("/_sovereign/auth/me", { credentials: "include", signal: AbortSignal.timeout(5000) })
+      .then(res => {
+        setIsAuthed(res.ok);
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        setIsAuthed(false);
+        setAuthChecked(true);
+      });
   }, []);
 
   // Redirect unauthenticated users to login
@@ -151,10 +152,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center justify-center gap-3">
             <a href="/login" className="px-6 py-2.5 rounded-xl bg-brand text-background font-medium hover:bg-brand-bright transition-colors">Sign In</a>
             <a href="/signup" className="px-6 py-2.5 rounded-xl border border-border font-medium hover:bg-surface transition-colors">Create Account</a>
-          </div>
-          <div className="mt-8 rounded-xl border border-border bg-panel p-4">
-            <p className="text-xs text-text-muted mb-2">Quick access with admin token:</p>
-            <p className="text-[10px] font-mono text-text-muted">Go to <a href="/settings" className="text-brand">/settings</a> and enter your admin token, then refresh.</p>
           </div>
         </div>
       </div>

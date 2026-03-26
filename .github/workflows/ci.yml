@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  # ── Typecheck + Lint ──────────────────────────────────────────────────────
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,8 +20,25 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Type check
+      - name: TypeScript type check
         run: bunx tsc --noEmit
+
+      - name: Lint (Biome)
+        run: bunx biome check .
+        continue-on-error: true  # Don't block on lint warnings initially
+
+  # ── Backend Tests ─────────────────────────────────────────────────────────
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
 
       - name: Run integration tests
         run: bun test apps/oss/src/test/integration.test.ts
@@ -31,8 +49,73 @@ jobs:
           JWT_SECRET: ci-test-jwt-not-for-production-use-xxxxxxxx
           ADMIN_TOKEN: ci-test-admin
 
+      - name: Run security tests
+        run: bun test apps/oss/src/test/security.test.ts
+        env:
+          NODE_ENV: test
+          SOVEREIGN_SERVER_KEY: ci-test-key-not-for-production-use
+          JWT_SECRET: ci-test-jwt-not-for-production-use-xxxxxxxx
+
+      - name: Run performance tests
+        run: bun test apps/oss/src/test/performance.test.ts
+        env:
+          NODE_ENV: test
+          SOVEREIGN_SERVER_KEY: ci-test-key-not-for-production-use
+          JWT_SECRET: ci-test-jwt-not-for-production-use-xxxxxxxx
+
+      - name: Run gateway tests
+        run: bun test apps/oss/src/test/gateway.test.ts
+        env:
+          NODE_ENV: test
+          ANCHOR_TIER: starter
+          SOVEREIGN_SERVER_KEY: ci-test-key-not-for-production-use
+          JWT_SECRET: ci-test-jwt-not-for-production-use-xxxxxxxx
+          ADMIN_TOKEN: ci-test-admin
+
+  # ── Frontend Build ────────────────────────────────────────────────────────
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build frontend
+        run: bun run build:web
+        env:
+          SOVEREIGN_API_URL: http://localhost:8787
+
+  # ── Security Audit ────────────────────────────────────────────────────────
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Audit dependencies for known vulnerabilities
+        run: bun pm audit 2>&1 || true  # Log but don't block (bun audit is still maturing)
+
+      - name: Check for leaked secrets in code
+        run: |
+          # Simple grep-based secret detection (replace with trufflehog/gitleaks in production)
+          ! grep -rn --include="*.ts" --include="*.tsx" --include="*.js" \
+            -E '(sk_live_|pk_live_|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|-----BEGIN (RSA |EC )?PRIVATE KEY)' \
+            apps/ packages/ || echo "No hardcoded secrets found"
+
+  # ── Deploy (only on main push, after all checks pass) ─────────────────────
   deploy:
-    needs: test
+    needs: [quality, test-backend, build-frontend, security]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:

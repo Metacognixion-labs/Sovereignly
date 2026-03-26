@@ -38,6 +38,7 @@ import { timingSafeEqual } from "../security/crypto.ts";
 import { Hono }          from "hono";
 import type { Context }  from "hono";
 import { verifyJWT }     from "../security/zero-trust.ts";
+import { InputShield }   from "../security/input-shield.ts";
 import type { SovereignChain } from "../security/chain.ts";
 
 //  Route configuration 
@@ -103,6 +104,7 @@ export class SovereignGateway {
   private app:         Hono;
   private cfg:         GatewayConfig;
   private rateLimiter: RateLimiter;
+  private shield:      InputShield;
 
   // Headers stripped from ALL upstream requests (security hygiene)
   private static readonly STRIP_ALWAYS = [
@@ -123,6 +125,7 @@ export class SovereignGateway {
     this.cfg         = cfg;
     this.app         = new Hono();
     this.rateLimiter = new RateLimiter();
+    this.shield      = new InputShield();
     this.register();
   }
 
@@ -155,6 +158,33 @@ export class SovereignGateway {
           error:   "rate_limit_exceeded",
           retryIn: "60s",
         }, 429);
+      }
+    }
+
+    // Input Shield: scan POST/PUT/PATCH JSON bodies for injection attacks
+    // IMPORTANT: Clone the request before reading JSON to preserve the original body stream
+    // for the proxy. ReadableStream can only be consumed once.
+    if (method === "POST" || method === "PUT" || method === "PATCH") {
+      const ct = c.req.header("content-type") ?? "";
+      if (ct.includes("application/json")) {
+        try {
+          const cloned = c.req.raw.clone();
+          const body = await cloned.json().catch(() => null);
+          if (body) {
+            const scan = this.shield.scanObject(body);
+            if (!scan.safe) {
+              void this.cfg.chain.emit("ANOMALY", {
+                type: "INPUT_INJECTION_GATEWAY",
+                ip, path, method,
+                threats: scan.threats.map((t: { type: string }) => t.type),
+              }, "HIGH");
+              return c.json({
+                error: "Request blocked: suspicious input detected",
+                threats: scan.threats.map((t: { type: string }) => t.type),
+              }, 400);
+            }
+          }
+        } catch { /* non-JSON body — skip scan */ }
       }
     }
 

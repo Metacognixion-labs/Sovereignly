@@ -17,8 +17,16 @@
  */
 
 import { verifyEd25519, fromHex } from "../security/crypto.ts";
+import type { SovereignKV } from "../kv/index.ts";
 
-//  Types 
+// Pluggable nonce store — defaults to in-memory, can be backed by SovereignKV
+let _kvStore: SovereignKV | null = null;
+const SOLANA_NONCE_NS = "auth:solana:nonce";
+
+/** Call once at boot to enable persistent nonce storage via SovereignKV */
+export function initSolanaStore(kv: SovereignKV): void { _kvStore = kv; }
+
+//  Types
 
 export interface SolanaVerifyResult {
   valid:      boolean;
@@ -26,24 +34,38 @@ export interface SolanaVerifyResult {
   reason?:    string;
 }
 
-//  Nonce store 
+//  Nonce store (KV-backed for persistence + multi-instance, fallback to in-memory)
 
-const nonces = new Map<string, { expiresAt: number; used: boolean }>();
+const _memNonces = new Map<string, { expiresAt: number; used: boolean }>();
 const NONCE_TTL_MS = 10 * 60 * 1000;
+const NONCE_TTL_SECS = 600;
 
 export function generateSolanaNonce(): string {
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)))
     .map(b => b.toString(16).padStart(2, "0")).join("");
-  nonces.set(nonce, { expiresAt: Date.now() + NONCE_TTL_MS, used: false });
+
+  if (_kvStore) {
+    _kvStore._set(SOLANA_NONCE_NS, nonce, "valid", { ttl: NONCE_TTL_SECS });
+  } else {
+    _memNonces.set(nonce, { expiresAt: Date.now() + NONCE_TTL_MS, used: false });
+  }
   return nonce;
 }
 
 function consumeNonce(nonce: string): { ok: boolean; reason?: string } {
-  const entry = nonces.get(nonce);
+  if (_kvStore) {
+    const val = _kvStore._get(SOLANA_NONCE_NS, nonce);
+    if (!val)           return { ok: false, reason: "nonce not found" };
+    if (val === "used") return { ok: false, reason: "nonce already used" };
+    _kvStore._set(SOLANA_NONCE_NS, nonce, "used", { ttl: 60 });
+    return { ok: true };
+  }
+
+  const entry = _memNonces.get(nonce);
   if (!entry)           return { ok: false, reason: "nonce not found" };
   if (entry.used)       return { ok: false, reason: "nonce already used" };
   if (Date.now() > entry.expiresAt) {
-    nonces.delete(nonce);
+    _memNonces.delete(nonce);
     return { ok: false, reason: "nonce expired" };
   }
   entry.used = true;

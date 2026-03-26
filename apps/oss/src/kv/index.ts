@@ -15,6 +15,7 @@
  */
 
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -42,6 +43,7 @@ const SCHEMA = `
 
   PRAGMA journal_mode = WAL;
   PRAGMA synchronous   = NORMAL;
+  PRAGMA busy_timeout  = 5000;     -- Wait up to 5s for locked DB before failing
   PRAGMA cache_size    = -64000;   -- 64MB page cache
   PRAGMA temp_store    = MEMORY;
   PRAGMA mmap_size     = 268435456; -- 256MB mmap
@@ -77,7 +79,7 @@ export class SovereignKV {
 
   constructor(options: KVOptions = {}) {
     const dataDir = options.dataDir ?? "./data/kv";
-    Bun.spawnSync(["mkdir", "-p", dataDir]);
+    mkdirSync(dataDir, { recursive: true });
 
     const dbPath = join(dataDir, "kv.sqlite");
     this.db = new Database(dbPath, { create: true });
@@ -185,6 +187,30 @@ export class SovereignKV {
     return row.value;
   }
 
+  /**
+   * Retry a write operation with exponential backoff on SQLITE_BUSY.
+   *
+   * NOTE: Uses Bun.sleepSync() which blocks the event loop thread.
+   * Backoff is short (10ms → 40ms max) and only triggers under SQLite lock
+   * contention, which is rare with WAL mode + busy_timeout=5s.
+   * Acceptable tradeoff for synchronous SQLite operations.
+   */
+  private retryWrite<T>(fn: () => T, maxRetries = 2): T {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return fn();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "";
+        const isBusy = msg.includes("database is locked") || (err as { code?: string }).code === "SQLITE_BUSY";
+        if (!isBusy || attempt === maxRetries) throw err;
+        // Exponential backoff: 10ms, 40ms (capped at 2 retries)
+        const delay = 10 * Math.pow(4, attempt);
+        Bun.sleepSync(delay);
+      }
+    }
+    throw new Error("KV: write retry exhausted"); // unreachable
+  }
+
   _set(
     ns: string, key: string, value: string,
     opts: { ttl?: number; meta?: Record<string, unknown> } = {}
@@ -192,16 +218,18 @@ export class SovereignKV {
     if (!ns) throw new Error("KV: namespace cannot be empty");
     if (!key) throw new Error("KV: key cannot be empty");
     const now = Date.now();
-    this.stmtSet.run({
-      $ns: ns, $key: key, $value: value,
-      $expires: opts.ttl ? now + opts.ttl * 1000 : null,
-      $now: now,
-      $meta: opts.meta ? JSON.stringify(opts.meta) : null,
-    });
+    this.retryWrite(() =>
+      this.stmtSet.run({
+        $ns: ns, $key: key, $value: value,
+        $expires: opts.ttl ? now + opts.ttl * 1000 : null,
+        $now: now,
+        $meta: opts.meta ? JSON.stringify(opts.meta) : null,
+      })
+    );
   }
 
   _delete(ns: string, key: string): boolean {
-    const result = this.stmtDel.run({ $ns: ns, $key: key });
+    const result = this.retryWrite(() => this.stmtDel.run({ $ns: ns, $key: key }));
     return result.changes > 0;
   }
 
@@ -213,8 +241,24 @@ export class SovereignKV {
   }
 
   _incr(ns: string, key: string, by = 1): number {
-    const row = this.stmtIncr.get({ $ns: ns, $key: key, $by: by }) as any;
+    const row = this.retryWrite(() => this.stmtIncr.get({ $ns: ns, $key: key, $by: by })) as any;
     return row.value;
+  }
+
+  /** Batch fetch all key-value pairs for a namespace in a single query (eliminates N+1) */
+  _getAllByNamespace(ns: string, limit = 500): Record<string, string> {
+    const rows = this.reader.prepare(`
+      SELECT key, value FROM kv
+      WHERE ns = $ns
+        AND (expires IS NULL OR expires > $now)
+      ORDER BY key
+      LIMIT $limit
+    `).all({ $ns: ns, $now: Date.now(), $limit: limit }) as Array<{ key: string; value: string }>;
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
   }
 
   _cas(ns: string, key: string, expected: string | null, next: string): boolean {

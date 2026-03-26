@@ -176,7 +176,7 @@ export class TOTPService {
   }> {
     const row = this.db.prepare(
       "SELECT secret_encrypted FROM totp_secrets WHERE user_id=?"
-    ).get(userId) as any;
+    ).get(userId) as { secret_encrypted: string } | null;
     if (!row) return { ok: false, error: "No TOTP setup in progress" };
 
     const secret = await decryptAES(row.secret_encrypted, this.encPassword);
@@ -206,7 +206,7 @@ export class TOTPService {
   async verify(userId: string, code: string): Promise<boolean> {
     const row = this.db.prepare(
       "SELECT secret_encrypted, enabled FROM totp_secrets WHERE user_id=?"
-    ).get(userId) as any;
+    ).get(userId) as { secret_encrypted: string; enabled: number } | null;
     if (!row || !row.enabled) return false;
 
     const secret = await decryptAES(row.secret_encrypted, this.encPassword);
@@ -218,7 +218,7 @@ export class TOTPService {
   isEnabled(userId: string): boolean {
     const row = this.db.prepare(
       "SELECT enabled FROM totp_secrets WHERE user_id=?"
-    ).get(userId) as any;
+    ).get(userId) as { enabled: number } | null;
     return row?.enabled === 1;
   }
 
@@ -227,7 +227,7 @@ export class TOTPService {
     const hash = await sha256(userId + ":" + code.trim().toLowerCase());
     const row = this.db.prepare(
       "SELECT id FROM backup_codes WHERE user_id=? AND code_hash=? AND used=0 LIMIT 1"
-    ).get(userId, hash) as any;
+    ).get(userId, hash) as { id: string } | null;
     if (!row) return false;
 
     this.db.prepare("UPDATE backup_codes SET used=1, used_at=? WHERE id=?")
@@ -263,7 +263,7 @@ export class TOTPService {
   remainingBackupCodes(userId: string): number {
     const row = this.db.prepare(
       "SELECT COUNT(*) AS n FROM backup_codes WHERE user_id=? AND used=0"
-    ).get(userId) as any;
+    ).get(userId) as { n: number } | null;
     return row?.n ?? 0;
   }
 

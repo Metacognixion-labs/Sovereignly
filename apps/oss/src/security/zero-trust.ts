@@ -66,9 +66,9 @@ export function initRevocationStore(dataDir: string): void {
   setInterval(() => {
     const now = Math.floor(Date.now() / 1000);
     revocationDb?.prepare("DELETE FROM revoked_tokens WHERE expires_at <= ?").run(now);
-    // Rebuild cache from DB
+    // Rebuild cache from DB (only non-expired tokens)
     revokedCache.clear();
-    const active = revocationDb?.prepare("SELECT jti FROM revoked_tokens").all() as Array<{ jti: string }> ?? [];
+    const active = revocationDb?.prepare("SELECT jti FROM revoked_tokens WHERE expires_at > ?").all(now) as Array<{ jti: string }> ?? [];
     for (const row of active) revokedCache.add(row.jti);
   }, 5 * 60_000);
 }
@@ -296,24 +296,35 @@ export function scanForSecrets(code: string): ScanResult {
 
 //  Security Headers 
 
-export function applySecurityHeaders(headers: Headers): void {
+/**
+ * Generate a per-request CSP nonce for inline scripts/styles.
+ * Must be base64-encoded and cryptographically random.
+ */
+export function generateCSPNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes));
+}
+
+export function applySecurityHeaders(headers: Headers, cspNonce?: string): void {
   // OWASP recommended + extras
   headers.set("X-Frame-Options",            "DENY");
   headers.set("X-Content-Type-Options",     "nosniff");
-  headers.set("X-XSS-Protection",           "1; mode=block");
+  headers.set("X-XSS-Protection",           "0"); // Deprecated; CSP is the real defense
   headers.set("Referrer-Policy",            "strict-origin-when-cross-origin");
   headers.set("Permissions-Policy",         "camera=(), microphone=(), geolocation=()");
   headers.set("X-Sovereign-Version",        "4.0.0");
   headers.set("X-Sovereign-Node",           process.env.SOVEREIGN_NODE_ID ?? "primary");
 
+  // Nonce-based CSP — no unsafe-inline. Inline scripts must include nonce attribute.
+  const nonceSrc = cspNonce ? `'nonce-${cspNonce}'` : "";
   headers.set("Content-Security-Policy",
-    "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-    "font-src 'self' https://fonts.gstatic.com; " +
-    "img-src 'self' data:; " +
-    "connect-src 'self'; " +
-    "frame-ancestors 'none';"
+    `default-src 'self'; ` +
+    `script-src 'self' ${nonceSrc} https://cdnjs.cloudflare.com; ` +
+    `style-src 'self' ${nonceSrc} https://fonts.googleapis.com; ` +
+    `font-src 'self' https://fonts.gstatic.com; ` +
+    `img-src 'self' data:; ` +
+    `connect-src 'self'; ` +
+    `frame-ancestors 'none';`
   );
 
   headers.set("Strict-Transport-Security",
@@ -333,23 +344,60 @@ export interface ZeroTrustConfig {
   chain:         SovereignChain | null;
   anomaly:       AnomalyDetector;
   enableHeaders: boolean;
+  trustedProxies?: string[];  // CIDRs or IPs of trusted reverse proxies (Caddy, Fly.io, etc.)
+}
+
+/**
+ * Extract the real client IP from proxy headers.
+ * Only trusts the rightmost entry in X-Forwarded-For that isn't a known proxy,
+ * or falls back to X-Real-IP / Cf-Connecting-IP.
+ */
+function resolveClientIP(c: Context, trustedProxies: Set<string>): string {
+  // Prefer Cf-Connecting-IP (set by Cloudflare at edge, cannot be spoofed)
+  const cfIP = c.req.header("cf-connecting-ip");
+  if (cfIP) return cfIP.trim();
+
+  // Fly-Client-IP (set by Fly.io proxy, cannot be spoofed by client)
+  const flyIP = c.req.header("fly-client-ip");
+  if (flyIP) return flyIP.trim();
+
+  // X-Forwarded-For: walk from rightmost, skip trusted proxies
+  const xff = c.req.header("x-forwarded-for");
+  if (xff) {
+    const ips = xff.split(",").map(s => s.trim()).filter(Boolean);
+    // Walk from right to left: the rightmost non-trusted IP is the real client
+    for (let i = ips.length - 1; i >= 0; i--) {
+      if (!trustedProxies.has(ips[i])) return ips[i];
+    }
+    // All IPs are trusted proxies — use leftmost as last resort
+    if (ips.length > 0) return ips[0];
+  }
+
+  // X-Real-IP fallback (set by Caddy/Nginx)
+  const realIP = c.req.header("x-real-ip");
+  if (realIP) return realIP.trim();
+
+  return "unknown";
 }
 
 export function createZeroTrustMiddleware(cfg: ZeroTrustConfig): MiddlewareHandler {
   const shield = new InputShield();
+  const trustedProxies = new Set(cfg.trustedProxies ?? []);
 
   return async (c: Context, next: Next) => {
-    const ip      = c.req.header("x-real-ip") ?? c.req.header("cf-connecting-ip") ?? "unknown";
+    const ip      = resolveClientIP(c, trustedProxies);
     const path    = new URL(c.req.url).pathname;
     const method  = c.req.method;
     const reqId   = c.get("requestId") ?? crypto.randomUUID();
 
     //  0. Input Shield: scan POST/PUT/PATCH bodies for injection
+    //  IMPORTANT: Clone request before reading JSON to preserve body stream for downstream handlers
     if (method === "POST" || method === "PUT" || method === "PATCH") {
       try {
         const contentType = c.req.header("content-type") ?? "";
         if (contentType.includes("application/json")) {
-          const body = await c.req.json().catch(() => null);
+          const cloned = c.req.raw.clone();
+          const body = await cloned.json().catch(() => null);
           if (body) {
             const scan = shield.scanObject(body);
             if (!scan.safe) {
@@ -369,7 +417,29 @@ export function createZeroTrustMiddleware(cfg: ZeroTrustConfig): MiddlewareHandl
       } catch { /* non-JSON body, skip scan */ }
     }
 
-    //  1. Check blocked IPs
+    //  1. CSRF protection for cookie-based auth on mutating requests
+    //  If the request uses a cookie (not Bearer header) for auth, require X-Requested-With.
+    //  Browsers won't send custom headers cross-origin without CORS preflight.
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      const cookieHeader = c.req.header("cookie") ?? "";
+      const hasCookieAuth = cookieHeader.includes("__sovereign_session=");
+      const hasBearerAuth = (c.req.header("authorization") ?? "").startsWith("Bearer ");
+      const hasAdminToken = !!(c.req.header("x-sovereign-token"));
+
+      // Only enforce CSRF for cookie-only auth (not API clients using Bearer/admin token)
+      if (hasCookieAuth && !hasBearerAuth && !hasAdminToken) {
+        const xrw = c.req.header("x-requested-with") ?? "";
+        if (xrw !== "sovereignly") {
+          void cfg.chain?.emit("ANOMALY", {
+            type: "CSRF_ATTEMPT",
+            ip, path, method,
+          }, "HIGH");
+          return c.json({ error: "CSRF validation failed", requestId: reqId }, 403);
+        }
+      }
+    }
+
+    //  2. Check blocked IPs
     if (cfg.anomaly.isBlocked(ip)) {
       void cfg.chain?.emit("AUTH_FAILURE", {
         ip, path, method, reason: "ip_blocked",
@@ -377,9 +447,11 @@ export function createZeroTrustMiddleware(cfg: ZeroTrustConfig): MiddlewareHandl
       return c.json({ error: "forbidden", requestId: reqId }, 403);
     }
 
-    //  2. Apply security headers 
+    //  2. Apply security headers (nonce-based CSP — no unsafe-inline)
+    const cspNonce = generateCSPNonce();
+    c.set("cspNonce", cspNonce);
+
     if (cfg.enableHeaders) {
-      const origAfter = c.res;
       c.header("X-Frame-Options",            "DENY");
       c.header("X-Content-Type-Options",     "nosniff");
       c.header("X-Sovereign-Version",        "4.0.0");
@@ -387,23 +459,37 @@ export function createZeroTrustMiddleware(cfg: ZeroTrustConfig): MiddlewareHandl
       c.header("Strict-Transport-Security",  "max-age=31536000; includeSubDomains");
       c.header("Permissions-Policy",         "camera=(), microphone=(), geolocation=()");
       c.header("Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-        "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; " +
-        "connect-src 'self'; frame-ancestors 'none';"
+        `default-src 'self'; ` +
+        `script-src 'self' 'nonce-${cspNonce}' https://cdnjs.cloudflare.com; ` +
+        `style-src 'self' 'nonce-${cspNonce}' https://fonts.googleapis.com; ` +
+        `font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; ` +
+        `connect-src 'self'; frame-ancestors 'none';`
       );
     }
 
     //  3. Admin endpoint authentication 
-    if (path.startsWith("/_sovereign/") && path !== "/_sovereign/health") {
+    // Public system endpoints (health probes for LB/K8s, metrics via Prometheus scraper)
+    const publicSystemPaths = new Set(["/_sovereign/health", "/_sovereign/live", "/_sovereign/ready", "/_sovereign/prometheus"]);
+    if (path.startsWith("/_sovereign/") && !publicSystemPaths.has(path)) {
       const authHeader = c.req.header("authorization") ?? "";
       const tokenHeader = c.req.header("x-sovereign-token") ?? "";
 
       let authenticated = false;
       let role: Role = "reader";
 
-      // Bearer JWT
-      if (authHeader.startsWith("Bearer ")) {
+      // 1. httpOnly session cookie (preferred — immune to XSS)
+      const cookieHeader = c.req.header("cookie") ?? "";
+      const cookieMatch = cookieHeader.match(/__sovereign_session=([^;]+)/);
+      if (cookieMatch?.[1]) {
+        const { valid, payload } = await verifyJWT(cookieMatch[1], cfg.jwtSecret);
+        if (valid && payload) {
+          authenticated = true;
+          role = payload.role;
+        }
+      }
+
+      // 2. Bearer JWT header (API clients, SDK, legacy)
+      if (!authenticated && authHeader.startsWith("Bearer ")) {
         const token = authHeader.slice(7);
         const { valid, payload } = await verifyJWT(token, cfg.jwtSecret);
         if (valid && payload) {

@@ -10,9 +10,9 @@ import { toast } from "sonner";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<"email" | "code" | "token">("email");
+  const [step, setStep] = useState<"email" | "code">("email");
   const [code, setCode] = useState("");
-  const { setJwtToken, setAdminToken, endpoint } = useStore();
+  const { endpoint } = useStore();
   const router = useRouter();
 
   async function handleEmail(e: React.FormEvent) {
@@ -21,7 +21,8 @@ export default function LoginPage() {
     try {
       const res = await fetch(`${endpoint}/_sovereign/signin`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Requested-With": "sovereignly" },
+        credentials: "include",
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
@@ -29,7 +30,7 @@ export default function LoginPage() {
         setStep("code");
         toast.info("Check your email for a verification code");
       } else if (data.token) {
-        setJwtToken(data.token);
+        // Cookie is set by backend; token in body is for API client compat
         toast.success("Signed in!");
         router.push("/overview");
       } else {
@@ -48,12 +49,12 @@ export default function LoginPage() {
     try {
       const res = await fetch(`${endpoint}/_sovereign/signin/verify`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Requested-With": "sovereignly" },
+        credentials: "include",
         body: JSON.stringify({ email, code }),
       });
       const data = await res.json();
       if (data.token) {
-        setJwtToken(data.token);
         toast.success("Signed in!");
         router.push("/overview");
       } else {
@@ -129,34 +130,6 @@ export default function LoginPage() {
           </button>
         </form>
       )}
-
-      {/* Admin Token Quick Login */}
-      <div className="mt-6 pt-4 border-t border-border">
-        <button onClick={() => setStep(step === "token" ? "email" : "token" as any)}
-          className="w-full text-xs text-text-muted hover:text-text-primary transition-colors mb-3">
-          {step === "token" ? "← Back to email login" : "Sign in with admin token →"}
-        </button>
-        {step === "token" as any && (
-          <div className="space-y-3">
-            <input
-              type="password"
-              placeholder="sk-sovereign-..."
-              className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm font-mono focus:border-brand outline-none"
-              onKeyDown={e => {
-                if (e.key === "Enter") {
-                  const val = (e.target as HTMLInputElement).value;
-                  if (val) {
-                    setAdminToken(val);
-                    toast.success("Admin token saved");
-                    router.push("/overview");
-                  }
-                }
-              }}
-            />
-            <p className="text-[10px] text-text-muted text-center">Enter your admin token and press Enter</p>
-          </div>
-        )}
-      </div>
 
       <div className="mt-4 text-center">
         <Link href="/signup" className="text-sm text-brand hover:text-brand-bright transition-colors">

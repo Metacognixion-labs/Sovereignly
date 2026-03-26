@@ -265,9 +265,13 @@ export class WorkerPool {
   }
 
   private drain() {
-    if (this.queue.length === 0) return;
-    const next = this.queue.shift()!;
-    this.run(next.task).then(next.resolve).catch(next.reject);
+    // Drain all queued tasks that have available workers (not just one)
+    while (this.queue.length > 0) {
+      const hasAvailable = this.workers.some(w => !w.busy);
+      if (!hasAvailable) break;
+      const next = this.queue.shift()!;
+      this.run(next.task).then(next.resolve).catch(next.reject);
+    }
   }
 
   async run(task: {
@@ -291,13 +295,8 @@ export class WorkerPool {
 
     const msgId = crypto.randomUUID();
 
-    // Pre-fetch KV data for the function's namespace
-    const kvEntries = this.kv._list(task.kvNamespace, undefined, 500);
-    const kvData: Record<string, string> = {};
-    for (const { key } of kvEntries) {
-      const val = this.kv._get(task.kvNamespace, key);
-      if (val) kvData[key] = val;
-    }
+    // Batch-fetch all KV data for the function's namespace in a single query
+    const kvData = this.kv._getAllByNamespace(task.kvNamespace, 500);
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {

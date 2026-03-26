@@ -10,7 +10,7 @@ import { timingSafeEqual } from "../security/crypto.ts";
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { SovereignChain } from "../security/chain.ts";
-import { issueJWT } from "../security/zero-trust.ts";
+import { issueJWT, verifyJWT } from "../security/zero-trust.ts";
 
 export function registerChainRoutes(
   app:        Hono,
@@ -76,13 +76,25 @@ export function registerChainRoutes(
   });
 
   //  Real-time SSE stream for chain events and blocks
-  //  Supports token in query string since browser EventSource can't send headers
-  app.get("/_sovereign/chain/stream", (c) => {
+  //  Auth: cookie (browser), query token (legacy), or x-sovereign-token header
+  app.get("/_sovereign/chain/stream", async (c) => {
+    // 1. Cookie-based auth — verify the JWT inside the session cookie
+    const cookieHeader = c.req.header("cookie") ?? "";
+    const cookieMatch = cookieHeader.match(/__sovereign_session=([^;]+)/);
+    let cookieAuthed = false;
+    if (cookieMatch?.[1]) {
+      const { valid } = await verifyJWT(cookieMatch[1], cfg.jwtSecret);
+      cookieAuthed = valid;
+    }
+
+    // 2. Query token fallback (legacy / programmatic clients)
     const queryToken = c.req.query("token");
-    if (queryToken && cfg.adminToken && timingSafeEqual(queryToken, cfg.adminToken)) {
+    if (cookieAuthed) {
+      // authenticated via verified session cookie
+    } else if (queryToken && cfg.adminToken && timingSafeEqual(queryToken, cfg.adminToken)) {
       // authenticated via query param
     } else if (!requireAuth(c)) {
-      return c.json({ error: "unauthorized — pass token as query param or x-sovereign-token header" }, 401);
+      return c.json({ error: "unauthorized" }, 401);
     }
 
     return streamSSE(c, async (stream) => {

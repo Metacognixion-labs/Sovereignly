@@ -11,7 +11,7 @@ export default function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const { setJwtToken, endpoint } = useStore();
+  const { endpoint } = useStore();
   const router = useRouter();
 
   async function handleSignup(e: React.FormEvent) {
@@ -20,12 +20,12 @@ export default function SignupPage() {
     try {
       const res = await fetch(`${endpoint}/_sovereign/signup`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Requested-With": "sovereignly" },
+        credentials: "include",
         body: JSON.stringify({ name, email }),
       });
       const data = await res.json();
       if (data.ok && data.token) {
-        setJwtToken(data.token);
         toast.success(`Welcome! Tenant "${data.tenant.name}" created.`);
         router.push("/overview");
       } else {

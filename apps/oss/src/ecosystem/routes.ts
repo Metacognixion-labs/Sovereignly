@@ -11,7 +11,7 @@ import { timingSafeEqual } from "../security/crypto.ts";
 // GET  /v1/gamification/profile/:id Developer profile
 // GET  /v1/gamification/stats       Gamification stats
 
-import type { Hono } from "hono";
+import type { Hono, Context } from "hono";
 import type { PluginRegistry } from "./plugins.ts";
 import type { TemplateRegistry } from "./templates.ts";
 import type { GamificationEngine } from "./gamification.ts";
@@ -24,7 +24,7 @@ export function registerEcosystemRoutes(
   opts:          { adminToken?: string }
 ) {
 
-  function requireAuth(c: any): { ok: boolean; role: string; userId: string } {
+  function requireAuth(c: Context): { ok: boolean; role: string; userId: string } {
     const token = c.req.header("x-sovereign-token")?.replace("Bearer ", "")
                ?? c.req.header("authorization")?.slice(7);
     if (!token) return { ok: false, role: "", userId: "" };
@@ -36,7 +36,7 @@ export function registerEcosystemRoutes(
 
   app.get("/v1/marketplace", (c) => {
     const { type, tag } = c.req.query();
-    const list = plugins.listPublished({ type: type as any, tag });
+    const list = plugins.listPublished({ type: type as "agent" | "skill" | "plugin" | "workflow" | "template" | undefined, tag });
     return c.json({ count: list.length, plugins: list });
   });
 
@@ -44,22 +44,23 @@ export function registerEcosystemRoutes(
     const auth = requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- validated below
     const body = await c.req.json().catch(() => ({})) as any;
     if (!body.name || !body.type) return c.json({ error: "name and type required" }, 400);
 
     const manifest = plugins.publish({
-      name:        body.name,
-      type:        body.type,
-      version:     body.version ?? "1.0.0",
-      description: body.description ?? "",
-      author:      body.author ?? auth.userId,
+      name:        String(body.name),
+      type:        String(body.type) as "agent" | "skill" | "plugin" | "workflow" | "template",
+      version:     String(body.version ?? "1.0.0"),
+      description: String(body.description ?? ""),
+      author:      String(body.author ?? auth.userId),
       authorId:    auth.userId,
-      license:     body.license ?? "MIT",
-      homepage:    body.homepage,
-      repository:  body.repository,
-      tags:        body.tags ?? [],
-      permissions: body.permissions ?? [],
-      entrypoint:  body.entrypoint ?? "index.ts",
+      license:     String(body.license ?? "MIT"),
+      homepage:    body.homepage ? String(body.homepage) : undefined,
+      repository:  body.repository ? String(body.repository) : undefined,
+      tags:        Array.isArray(body.tags) ? body.tags : [],
+      permissions: Array.isArray(body.permissions) ? body.permissions : [],
+      entrypoint:  String(body.entrypoint ?? "index.ts"),
       config:      body.config,
     });
 
@@ -70,18 +71,19 @@ export function registerEcosystemRoutes(
     const auth = requireAuth(c);
     if (!auth.ok) return c.json({ error: "authentication required" }, 401);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- validated below
     const body = await c.req.json().catch(() => ({})) as any;
     if (!body.pluginId) return c.json({ error: "pluginId required" }, 400);
 
     try {
-      const installed = plugins.install(body.pluginId, {
-        tenantId:    body.tenantId,
+      const installed = plugins.install(String(body.pluginId), {
+        tenantId:    body.tenantId ? String(body.tenantId) : undefined,
         installedBy: auth.userId,
         config:      body.config,
       });
       return c.json({ installed }, 201);
-    } catch (err: any) {
-      return c.json({ error: err.message }, 400);
+    } catch (err: unknown) {
+      return c.json({ error: err instanceof Error ? err.message : "Unknown error" }, 400);
     }
   });
 

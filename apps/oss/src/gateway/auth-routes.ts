@@ -42,17 +42,87 @@ import { generateSolanaNonce, verifySolanaSignature } from "../auth/solana.ts";
 import { issueJWT, verifyJWT, revokeToken }  from "../security/zero-trust.ts";
 import type { SovereignChain }  from "../security/chain.ts";
 import type { MagicLinkService } from "../auth/magic-link.ts";
+import type { SovereignKV }     from "../kv/index.ts";
 
-// Short-lived auth code store for OAuth callback (code exchange pattern)
-const authCodes = new Map<string, { token: string; expiresAt: number }>();
+// Auth code store — KV-backed when available, in-memory fallback
+let _authCodeKV: SovereignKV | null = null;
+const AUTH_CODE_NS = "auth:codes";
+const _memAuthCodes = new Map<string, { token: string; expiresAt: number }>();
 setInterval(() => {
   const now = Date.now();
-  for (const [code, data] of authCodes) {
-    if (now > data.expiresAt) authCodes.delete(code);
+  for (const [code, data] of _memAuthCodes) {
+    if (now > data.expiresAt) _memAuthCodes.delete(code);
   }
 }, 30_000);
 
-//  User store 
+/** Call once at boot to enable persistent auth code storage */
+export function initAuthCodeStore(kv: SovereignKV): void { _authCodeKV = kv; }
+
+function storeAuthCode(code: string, token: string, ttlMs: number = 30_000): void {
+  if (_authCodeKV) {
+    _authCodeKV._set(AUTH_CODE_NS, code, token, { ttl: Math.ceil(ttlMs / 1000) });
+  } else {
+    _memAuthCodes.set(code, { token, expiresAt: Date.now() + ttlMs });
+  }
+}
+
+function consumeAuthCode(code: string): string | null {
+  if (_authCodeKV) {
+    const token = _authCodeKV._get(AUTH_CODE_NS, code);
+    if (token) _authCodeKV._delete(AUTH_CODE_NS, code); // single-use
+    return token;
+  }
+  const entry = _memAuthCodes.get(code);
+  _memAuthCodes.delete(code);
+  if (!entry || Date.now() > entry.expiresAt) return null;
+  return entry.token;
+}
+
+//  Secure cookie helpers
+
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const COOKIE_NAME = "__sovereign_session";
+const COOKIE_MAX_AGE = 3600; // 1 hour (matches JWT TTL)
+
+function setSessionCookie(c: any, token: string): void {
+  const flags = [
+    `${COOKIE_NAME}=${token}`,
+    `Path=/`,
+    `HttpOnly`,
+    `SameSite=Strict`,
+    `Max-Age=${COOKIE_MAX_AGE}`,
+  ];
+  if (IS_PRODUCTION) flags.push("Secure");
+  c.header("Set-Cookie", flags.join("; "));
+}
+
+function clearSessionCookie(c: any): void {
+  const flags = [
+    `${COOKIE_NAME}=`,
+    `Path=/`,
+    `HttpOnly`,
+    `SameSite=Strict`,
+    `Max-Age=0`,
+  ];
+  if (IS_PRODUCTION) flags.push("Secure");
+  c.header("Set-Cookie", flags.join("; "));
+}
+
+/** Extract JWT from cookie or Authorization header (backwards compat) */
+export function extractJWT(c: any): string | null {
+  // 1. Check httpOnly cookie first (secure path)
+  const cookieHeader = c.req.header("cookie") ?? "";
+  const match = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
+  if (match?.[1]) return match[1];
+
+  // 2. Fall back to Authorization header (API clients, legacy)
+  const auth = c.req.header("authorization") ?? "";
+  if (auth.startsWith("Bearer ")) return auth.slice(7);
+
+  return null;
+}
+
+//  User store
 
 
 function escapeHtml(s: string): string {
@@ -277,8 +347,36 @@ export function registerAuthRoutes(
     return valid && payload?.role === "admin";
   };
 
-  //  PASSKEYS  REGISTER BEGIN 
+  // Rate limiter for passkey registration (5 attempts per IP per hour)
+  const passkeyRegLimiter = new Map<string, { count: number; resetAt: number }>();
+  const PASSKEY_REG_LIMIT = 5;
+  const PASSKEY_REG_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, data] of passkeyRegLimiter) {
+      if (now > data.resetAt) passkeyRegLimiter.delete(ip);
+    }
+  }, 5 * 60_000);
+
+  function checkPasskeyRegLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = passkeyRegLimiter.get(ip);
+    if (!entry || now > entry.resetAt) {
+      passkeyRegLimiter.set(ip, { count: 1, resetAt: now + PASSKEY_REG_WINDOW_MS });
+      return true;
+    }
+    if (entry.count >= PASSKEY_REG_LIMIT) return false;
+    entry.count++;
+    return true;
+  }
+
+  //  PASSKEYS  REGISTER BEGIN
   app.get("/_sovereign/auth/passkeys/register/begin", async (c) => {
+    const ip = clientIP(c);
+    if (!checkPasskeyRegLimit(ip)) {
+      void chain.emit("RATE_LIMIT_HIT", { ip, endpoint: "passkeys/register", limit: PASSKEY_REG_LIMIT }, "MEDIUM");
+      return c.json({ error: "Too many registration attempts. Try again later." }, 429);
+    }
     const { userId, userName, displayName } = c.req.query();
     if (!userName) return c.json({ error: "userName required" }, 400);
     const uid  = userId ?? `usr_pk_${crypto.randomUUID().replace(/-/g,"").slice(0,16)}`;
@@ -295,6 +393,7 @@ export function registerAuthRoutes(
     const user  = users.upsertFromPasskey(r.credentialId!, body._userId);
     const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
     void chain.emit("AUTH_SUCCESS", { userId:user.id, method:"passkey_register", ip:clientIP(c) }, "LOW");
+    setSessionCookie(c, token);
     return c.json({ token, user, credentialId: r.credentialId }, 201);
   });
 
@@ -318,6 +417,7 @@ export function registerAuthRoutes(
     const user  = users.upsertFromPasskey(r.credentialId!, r.userId);
     const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
     void chain.emit("AUTH_SUCCESS", { userId:user.id, method:"passkey", ip:clientIP(c) }, "LOW");
+    setSessionCookie(c, token);
     return c.json({ token, user });
   });
 
@@ -346,7 +446,7 @@ export function registerAuthRoutes(
       void chain.emit("AUTH_SUCCESS", { userId:user.id, method:`oauth_${provider}`, ip:clientIP(c) }, "LOW");
       // Use short-lived auth code exchange instead of putting token in URL fragment
       const authCode = crypto.randomUUID();
-      authCodes.set(authCode, { token, expiresAt: Date.now() + 30_000 }); // 30s TTL
+      storeAuthCode(authCode, token);
       return c.redirect(`${cfg.appUrl}${redirectTo}?sovereign_code=${authCode}`);
     } catch (e: any) {
       void chain.emit("AUTH_FAILURE", { method:`oauth_${provider}`, reason:e.message, ip:clientIP(c) }, "MEDIUM");
@@ -359,13 +459,11 @@ export function registerAuthRoutes(
     const body = await c.req.json().catch(() => ({})) as any;
     const code = body.code;
     if (!code) return c.json({ error: "code required" }, 400);
-    const entry = authCodes.get(code);
-    if (!entry || Date.now() > entry.expiresAt) {
-      authCodes.delete(code);
+    const token = consumeAuthCode(code);
+    if (!token) {
       return c.json({ error: "invalid or expired code" }, 401);
     }
-    authCodes.delete(code); // single use
-    return c.json({ token: entry.token });
+    return c.json({ token });
   });
 
   //  SIWE  NONCE 
@@ -384,6 +482,7 @@ export function registerAuthRoutes(
     const user  = users.upsertFromWallet(r.address!, "evm");
     const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
     void chain.emit("AUTH_SUCCESS", { userId:user.id, method:"siwe", evmAddress:r.address, ip:clientIP(c) }, "LOW");
+    setSessionCookie(c, token);
     return c.json({ token, user, address: r.address });
   });
 
@@ -405,34 +504,36 @@ export function registerAuthRoutes(
     const user  = users.upsertFromWallet(body.publicKey, "solana");
     const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
     void chain.emit("AUTH_SUCCESS", { userId:user.id, method:"solana", solanaAddress:body.publicKey, ip:clientIP(c) }, "LOW");
+    setSessionCookie(c, token);
     return c.json({ token, user, address: body.publicKey });
   });
 
-  //  ME 
+  //  ME
   app.get("/_sovereign/auth/me", async (c) => {
-    const b = c.req.header("authorization")?.slice(7);
-    if (!b) return c.json({ error: "Bearer token required" }, 401);
+    const b = extractJWT(c);
+    if (!b) return c.json({ error: "auth required" }, 401);
     const { valid, payload } = await verifyJWT(b, cfg.jwtSecret);
     if (!valid || !payload) return c.json({ error: "invalid token" }, 401);
     const user = users.get(payload.sub);
     return user ? c.json({ user, exp: payload.exp }) : c.json({ error: "not found" }, 404);
   });
 
-  //  REFRESH 
+  //  REFRESH
   app.post("/_sovereign/auth/refresh", async (c) => {
-    const b = c.req.header("authorization")?.slice(7);
-    if (!b) return c.json({ error: "Bearer token required" }, 401);
+    const b = extractJWT(c);
+    if (!b) return c.json({ error: "auth required" }, 401);
     const { valid, payload } = await verifyJWT(b, cfg.jwtSecret);
     if (!valid || !payload) return c.json({ error: "invalid token" }, 401);
     const user = users.get(payload.sub);
     if (!user) return c.json({ error: "user not found" }, 404);
     const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
+    setSessionCookie(c, token);
     return c.json({ token, user });
   });
 
-  //  LOGOUT 
+  //  LOGOUT
   app.post("/_sovereign/auth/logout", async (c) => {
-    const b = c.req.header("authorization")?.slice(7);
+    const b = extractJWT(c);
     if (b) {
       const { valid, payload } = await verifyJWT(b, cfg.jwtSecret);
       if (valid && payload) {
@@ -440,6 +541,7 @@ export function registerAuthRoutes(
         void chain.emit("SESSION_END", { userId:payload.sub, ip:clientIP(c) }, "LOW");
       }
     }
+    clearSessionCookie(c);
     return c.json({ ok: true });
   });
 
@@ -471,9 +573,9 @@ export function registerAuthRoutes(
 
   //  TOTP 2FA MANAGEMENT
 
-  // Helper: extract user from JWT
+  // Helper: extract user from JWT (cookie or header)
   const requireJWT = async (c: any): Promise<{ sub: string; role: string } | null> => {
-    const b = c.req.header("authorization")?.slice(7);
+    const b = extractJWT(c);
     if (!b) return null;
     const { valid, payload } = await verifyJWT(b, cfg.jwtSecret);
     return valid && payload ? payload : null;
@@ -584,6 +686,7 @@ export function registerAuthRoutes(
     const user  = users.upsertFromMagicLink(email);
     const token = await issueJWT({ sub: user.id, role: user.role }, cfg.jwtSecret);
     void chain.emit("AUTH_SUCCESS", { userId: user.id, method: "magic_link", ip: clientIP(c) }, "LOW");
+    setSessionCookie(c, token);
     return c.json({ token, user });
   });
 
@@ -608,18 +711,19 @@ export function registerAuthRoutes(
 
     // Use auth code exchange pattern (same as OAuth callback)
     const authCode = crypto.randomUUID();
-    authCodes.set(authCode, { token: jwt, expiresAt: Date.now() + 30_000 });
+    storeAuthCode(authCode, jwt);
     return c.redirect(`${cfg.appUrl}/overview?sovereign_code=${authCode}`);
   });
 
   //  PORTAL PAGE
   app.get("/_sovereign/auth", (c) => {
     const providers = oauth.getSupportedProviders();
+    const nonce = (c as any).get("cspNonce") ?? "";
     return c.html(`<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sovereignly  Sign In</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script>
+<script nonce="${escapeHtml(nonce)}">
 window.__SOVEREIGN_API__='';window.__PASSKEYS_RPID__='${escapeHtml(rpId)}';
 window.__APP_URL__='${escapeHtml(cfg.appUrl)}';
 window.__OAUTH_PROVIDERS__=${JSON.stringify(providers)};

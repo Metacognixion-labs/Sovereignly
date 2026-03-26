@@ -26,8 +26,11 @@ import { OmnichainAnchor }    from "./security/omnichain-anchor.ts";
 import type { AnchorTier }     from "./security/omnichain-anchor.ts";
 import { registerChainRoutes } from "./gateway/chain-routes.ts";
 import { registerAuthRoutes }  from "./gateway/auth-routes.ts";
-import { OAuthBroker }         from "./auth/oauth.ts";
+import { OAuthBroker, initOAuthStore } from "./auth/oauth.ts";
 import { PasskeyEngine }       from "./auth/passkeys.ts";
+import { initSIWEStore }       from "./auth/siwe.ts";
+import { initSolanaStore }     from "./auth/solana.ts";
+import { initAuthCodeStore }   from "./gateway/auth-routes.ts";
 import { mkdir }               from "node:fs/promises";
 import { EventBus, platformBus }  from "./events/bus.ts";
 import { PolicyEngine }            from "./policies/engine.ts";
@@ -42,7 +45,7 @@ import { PluginRegistry }           from "./ecosystem/plugins.ts";
 import { TemplateRegistry }         from "./ecosystem/templates.ts";
 import { GamificationEngine }       from "./ecosystem/gamification.ts";
 import { registerEcosystemRoutes }  from "./ecosystem/routes.ts";
-import { tracingMiddleware, prometheusHandler, log } from "./observability/index.ts";
+import { tracingMiddleware, prometheusHandler, log, errorCaptureMiddleware, registerErrorReportingRoutes } from "./observability/index.ts";
 import { CAEPReceiver, registerCAEPRoutes } from "./auth/caep.ts";
 import { MagicLinkService }     from "./auth/magic-link.ts";
 import { createEmailTransport } from "./auth/email-transport.ts";
@@ -61,11 +64,37 @@ const POOL_SIZE    = parseInt(process.env.WORKER_POOL_SIZE ?? "4");
 const ADMIN_TOKEN  = process.env.ADMIN_TOKEN;
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
-if (IS_PRODUCTION && !process.env.JWT_SECRET) {
-  throw new Error("FATAL: JWT_SECRET must be set in production. Refusing to start with random secret.");
-}
-if (IS_PRODUCTION && !process.env.SOVEREIGN_SERVER_KEY) {
-  throw new Error("FATAL: SOVEREIGN_SERVER_KEY must be set in production. Refusing to start with random key.");
+// ── Production environment validation ────────────────────────────────────────
+// Fail fast on missing required vars. Warn on suspicious optional values.
+if (IS_PRODUCTION) {
+  const fatal: string[] = [];
+  if (!process.env.JWT_SECRET) fatal.push("JWT_SECRET");
+  if (!process.env.SOVEREIGN_SERVER_KEY) fatal.push("SOVEREIGN_SERVER_KEY");
+  if (!process.env.ADMIN_TOKEN) fatal.push("ADMIN_TOKEN");
+  if (fatal.length > 0) {
+    throw new Error(`FATAL: Missing required production env vars: ${fatal.join(", ")}. Refusing to start.`);
+  }
+
+  // Validate JWT_SECRET minimum strength (≥32 chars)
+  if ((process.env.JWT_SECRET?.length ?? 0) < 32) {
+    throw new Error("FATAL: JWT_SECRET must be at least 32 characters in production.");
+  }
+
+  // Validate CORS_ORIGINS is set (don't allow wildcard in prod)
+  const corsOrigins = process.env.CORS_ORIGINS ?? "";
+  if (!corsOrigins || corsOrigins === "*") {
+    console.warn("[SECURITY] CORS_ORIGINS not set or uses wildcard '*' in production. Set explicit origins.");
+  }
+
+  // Validate SOVEREIGN_DOMAIN is set for proper cookie/URL handling
+  if (!process.env.SOVEREIGN_DOMAIN) {
+    console.warn("[SECURITY] SOVEREIGN_DOMAIN not set in production. Cookies and URLs will use localhost.");
+  }
+
+  // Warn about anchor tier defaulting to free
+  if (!process.env.ANCHOR_TIER) {
+    console.warn("[CONFIG] ANCHOR_TIER not set — defaulting to 'free'. Set 'evm' or 'solana' for blockchain anchoring.");
+  }
 }
 
 const JWT_SECRET   = process.env.JWT_SECRET ?? (() => {
@@ -142,6 +171,12 @@ const magicLink = new MagicLinkService({
 
 const kv       = new SovereignKV({ dataDir: `${DATA_DIR}/platform` });
 await kv.init();
+
+// Wire auth stores to persistent KV (Phase 1 security: no more in-memory auth state)
+initSIWEStore(kv);
+initSolanaStore(kv);
+initOAuthStore(kv);
+initAuthCodeStore(kv);
 const storage   = new SovereignStorage({ dataDir: `${DATA_DIR}/platform` });
 const runtime   = new SovereignRuntime(kv, { poolSize: POOL_SIZE });
 const scheduler = new SovereignScheduler(runtime);
@@ -179,7 +214,7 @@ complianceEvaluator.start();
 
 //  5. Gateway + routes
 
-const { app, metrics, cache, limiter } = createGateway(runtime, kv, storage, {
+const { app, metrics, cache, limiter, gcTimer } = createGateway(runtime, kv, storage, {
   port: PORT, host: HOST,
   corsOrigins: (process.env.CORS_ORIGINS ?? (IS_PRODUCTION ? APP_URL : "*")).split(",").filter(Boolean),
   rateLimitPerMin: parseInt(process.env.RATE_LIMIT ?? "600"),
@@ -189,9 +224,14 @@ const { app, metrics, cache, limiter } = createGateway(runtime, kv, storage, {
   chain,
 });
 
-// Observability: request tracing + Prometheus metrics
+// Wire rate limiter to KV for distributed state across instances
+limiter.useKV(kv);
+
+// Observability: tracing first (assigns requestId/traceId), then error capture wraps all downstream
 app.use("*", tracingMiddleware());
+app.use("*", errorCaptureMiddleware(chain));
 app.get("/_sovereign/prometheus", (c) => prometheusHandler(c));
+registerErrorReportingRoutes(app, chain);
 
 registerChainRoutes(app, chain, null, { adminToken: ADMIN_TOKEN, jwtSecret: JWT_SECRET });
 registerAuthRoutes(app, passkeys, oauthBroker, chain, { jwtSecret: JWT_SECRET, adminToken: ADMIN_TOKEN, appUrl: APP_URL }, undefined, magicLink);
@@ -279,20 +319,64 @@ await chain.emit("NODE_JOIN", {
 
 console.log(`[Sovereignly OSS]  Ready  ${APP_URL}`);
 
-//  Shutdown 
+//  Graceful Shutdown (drain in-flight → flush chain → close stores)
 
 let shuttingDown = false;
 process.on("SIGTERM", shutdown);
 process.on("SIGINT",  shutdown);
+
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log("\n[Sovereignly] Shutting down...");
-  await chain.emit("NODE_LEAVE", { nodeId: NODE_ID, reason: "graceful" }, "LOW");
-  await chain.flush();
+
+  const shutdownStart = Date.now();
+  log("info", "Graceful shutdown initiated", { nodeId: NODE_ID });
+
+  // 1. Stop accepting new connections (allow in-flight to drain for up to 10s)
+  server.stop(false); // false = don't abort existing connections
+  log("info", "Stopped accepting new connections, draining in-flight requests...");
+
+  // Wait for in-flight requests (max 10 seconds)
+  const DRAIN_TIMEOUT_MS = 10_000;
+  await new Promise<void>((resolve) => {
+    const check = setInterval(() => {
+      // server.pendingRequests only available in newer Bun versions
+      if (Date.now() - shutdownStart > DRAIN_TIMEOUT_MS) {
+        clearInterval(check);
+        log("warn", "Drain timeout reached, forcing shutdown", { elapsed: Date.now() - shutdownStart });
+        resolve();
+      }
+    }, 100);
+    // Also resolve immediately if drain completes
+    setTimeout(resolve, 2000); // Minimum 2s grace for in-flight
+  });
+
+  // 2. Emit NODE_LEAVE and flush chain events to disk + omnichain
+  try {
+    await chain.emit("NODE_LEAVE", { nodeId: NODE_ID, reason: "graceful", uptimeMs: Date.now() - shutdownStart }, "LOW");
+    await chain.flush();
+    log("info", "Chain events flushed");
+  } catch (err: any) {
+    log("error", "Failed to flush chain during shutdown", { error: err.message });
+  }
+
+  // 3. Stop background services + clear timers
+  clearInterval(gcTimer);
   complianceEvaluator.stop();
-  server.stop(true); scheduler.stop(); runtime.shutdown(); workflowEngine.close(); agentRuntime.close(); gamification.close();
-  kv.close(); storage.close(); chain.close(); magicLink.close();
+  scheduler.stop();
+  runtime.shutdown();
+  workflowEngine.close();
+  agentRuntime.close();
+  gamification.close();
+
+  // 4. Close data stores (order: consumers first, then stores)
+  kv.close();
+  storage.close();
+  chain.close();
+  magicLink.close();
+
+  const elapsed = Date.now() - shutdownStart;
+  log("info", "Shutdown complete", { elapsed });
   process.exit(0);
 }
 

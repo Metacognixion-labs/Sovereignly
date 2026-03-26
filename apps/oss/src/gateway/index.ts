@@ -47,18 +47,49 @@ const DEFAULT_CONFIG: GatewayConfig = {
   adminToken: process.env.ADMIN_TOKEN,
 };
 
-//  Rate Limiter 
+//  Rate Limiter (KV-backed for multi-instance, in-memory fallback)
 
 class RateLimiter {
-  private windows = new Map<string, { count: number; resetAt: number }>();
+  private memWindows = new Map<string, { count: number; resetAt: number }>();
+  private kv: SovereignKV | null = null;
+  private readonly RATE_NS = "ratelimit";
+  private readonly WINDOW_SECS = 60; // 1 minute window
+
+  /** Attach KV for distributed rate limiting across instances */
+  useKV(kv: SovereignKV) { this.kv = kv; }
 
   check(key: string, limit: number): { ok: boolean; remaining: number; resetMs: number } {
+    if (this.kv) return this.checkKV(key, limit);
+    return this.checkMem(key, limit);
+  }
+
+  private checkKV(key: string, limit: number): { ok: boolean; remaining: number; resetMs: number } {
+    // Use the kv table (not kv_counters) so counter + TTL are in the same table.
+    // The TTL auto-expires the counter when the window rolls over.
+    const existing = this.kv!._get(this.RATE_NS, key);
+    const resetMs = Date.now() + this.WINDOW_SECS * 1000;
+
+    if (!existing) {
+      // Fresh window — create counter with TTL
+      this.kv!._set(this.RATE_NS, key, "1", { ttl: this.WINDOW_SECS });
+      return { ok: true, remaining: limit - 1, resetMs };
+    }
+
+    const count = parseInt(existing, 10) + 1;
+    // Update counter (preserve existing TTL by re-setting with same TTL)
+    this.kv!._set(this.RATE_NS, key, String(count), { ttl: this.WINDOW_SECS });
+
+    if (count > limit) return { ok: false, remaining: 0, resetMs };
+    return { ok: true, remaining: limit - count, resetMs };
+  }
+
+  private checkMem(key: string, limit: number): { ok: boolean; remaining: number; resetMs: number } {
     const now = Date.now();
     const windowMs = 60_000;
-    const w = this.windows.get(key);
+    const w = this.memWindows.get(key);
 
     if (!w || now > w.resetAt) {
-      this.windows.set(key, { count: 1, resetAt: now + windowMs });
+      this.memWindows.set(key, { count: 1, resetAt: now + windowMs });
       return { ok: true, remaining: limit - 1, resetMs: now + windowMs };
     }
     if (w.count >= limit) return { ok: false, remaining: 0, resetMs: w.resetAt };
@@ -66,32 +97,92 @@ class RateLimiter {
     return { ok: true, remaining: limit - w.count, resetMs: w.resetAt };
   }
 
-  // Auto-cleanup stale windows every 5 min
+  // Auto-cleanup stale in-memory windows every 5 min
   gc() {
     const now = Date.now();
-    for (const [k, w] of this.windows) if (now > w.resetAt) this.windows.delete(k);
+    for (const [k, w] of this.memWindows) if (now > w.resetAt) this.memWindows.delete(k);
   }
 }
 
-//  Response Cache 
+//  Response Cache (LRU-evicted, bounded, metrics-tracked)
 
-interface CacheEntry { body: string; headers: Record<string, string>; status: number; expiresAt: number }
+interface CacheEntry {
+  body: string;
+  headers: Record<string, string>;
+  status: number;
+  expiresAt: number;
+  lastAccessed: number; // For LRU eviction
+}
 
 class EdgeCache {
   private store = new Map<string, CacheEntry>();
+  private readonly maxEntries: number;
+
+  // Metrics
+  hits = 0;
+  misses = 0;
+  evictions = 0;
+
+  constructor(maxEntries = 2000) {
+    this.maxEntries = maxEntries;
+  }
 
   get(key: string): CacheEntry | null {
     const e = this.store.get(key);
-    if (!e || Date.now() > e.expiresAt) { this.store.delete(key); return null; }
+    if (!e) { this.misses++; return null; }
+    if (Date.now() > e.expiresAt) {
+      this.store.delete(key);
+      this.misses++;
+      return null;
+    }
+    // LRU: move to end of Map iteration order by re-inserting
+    this.store.delete(key);
+    e.lastAccessed = Date.now();
+    this.store.set(key, e);
+    this.hits++;
     return e;
   }
 
-  set(key: string, entry: Omit<CacheEntry, 'expiresAt'>, ttl: number) {
-    this.store.set(key, { ...entry, expiresAt: Date.now() + ttl * 1000 });
+  set(key: string, entry: Omit<CacheEntry, "expiresAt" | "lastAccessed">, ttl: number) {
+    // Evict oldest entries if at capacity
+    if (this.store.size >= this.maxEntries && !this.store.has(key)) {
+      this.evictLRU();
+    }
+    const now = Date.now();
+    this.store.set(key, { ...entry, expiresAt: now + ttl * 1000, lastAccessed: now });
+  }
+
+  /** Evict the least-recently-used entry (first item in Map iteration order) */
+  private evictLRU() {
+    const firstKey = this.store.keys().next().value;
+    if (firstKey !== undefined) {
+      this.store.delete(firstKey);
+      this.evictions++;
+    }
+  }
+
+  /** Background GC: remove expired entries */
+  gc() {
+    const now = Date.now();
+    for (const [key, entry] of this.store) {
+      if (now > entry.expiresAt) this.store.delete(key);
+    }
   }
 
   get size() { return this.store.size; }
-  flush() { this.store.clear(); }
+  get hitRate() { const total = this.hits + this.misses; return total === 0 ? 0 : this.hits / total; }
+  flush() { this.store.clear(); this.hits = 0; this.misses = 0; this.evictions = 0; }
+
+  stats() {
+    return {
+      size: this.store.size,
+      maxEntries: this.maxEntries,
+      hits: this.hits,
+      misses: this.misses,
+      evictions: this.evictions,
+      hitRate: Math.round(this.hitRate * 10000) / 100, // percentage with 2 decimals
+    };
+  }
 }
 
 //  Metrics Store 
@@ -121,7 +212,7 @@ export function createGateway(
   const cache = new EdgeCache();
   const metrics = new Metrics();
 
-  setInterval(() => limiter.gc(), 300_000);
+  const gcTimer = setInterval(() => { limiter.gc(); cache.gc(); }, 300_000);
 
   const app = new Hono();
 
@@ -136,8 +227,9 @@ export function createGateway(
   app.use("*", cors({
     origin: config.corsOrigins,
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Sovereign-Token"],
+    allowHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Sovereign-Token", "X-Requested-With"],
     exposeHeaders: ["X-Request-ID", "X-Execution-Ms", "X-Cache", "X-Worker-ID"],
+    credentials: true, // Required for httpOnly cookie auth
   }));
 
   if (config.enableCompression) app.use("*", compress());
@@ -161,8 +253,21 @@ export function createGateway(
     c.header("x-xss-protection", "0");
     c.header("referrer-policy", "strict-origin-when-cross-origin");
     c.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
+    c.header("cross-origin-opener-policy", "same-origin");
+    c.header("cross-origin-resource-policy", "same-origin");
     if (process.env.NODE_ENV === "production") {
-      c.header("strict-transport-security", "max-age=31536000; includeSubDomains");
+      c.header("strict-transport-security", "max-age=63072000; includeSubDomains; preload");
+      c.header("content-security-policy",
+        "default-src 'self'; " +
+        "script-src 'self'; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data: https:; " +
+        "font-src 'self'; " +
+        "connect-src 'self'; " +
+        "frame-ancestors 'none'; " +
+        "base-uri 'self'; " +
+        "form-action 'self'"
+      );
     }
   });
 
@@ -176,7 +281,35 @@ export function createGateway(
 
   //  Built-in system routes 
 
+  // ── Liveness probe: fast, process-level (for K8s/LB liveness checks) ──
+  app.get("/_sovereign/live", (c) => {
+    c.header("Cache-Control", "no-cache, no-store");
+    return c.json({ ok: true, ts: Date.now() }, 200);
+  });
+
+  // ── Readiness probe: deep subsystem check (for K8s readiness / traffic routing) ──
+  app.get("/_sovereign/ready", async (c) => {
+    const start = Date.now();
+    const chainStats = config.chain?.getStats?.();
+    const chainOk = chainStats && chainStats.blocks > 0;
+    const kvOk = (() => { try { kv.stats(); return true; } catch { return false; } })();
+    const storageOk = (() => { try { storage.stats(); return true; } catch { return false; } })();
+
+    const ready = chainOk && kvOk && storageOk;
+    return c.json({
+      ready,
+      subsystems: {
+        chain:   chainOk   ? "ok" : "degraded",
+        kv:      kvOk      ? "ok" : "degraded",
+        storage: storageOk ? "ok" : "degraded",
+      },
+      responseMs: Date.now() - start,
+    }, ready ? 200 : 503);
+  });
+
+  // ── Full health check (backward-compatible, detailed) ──
   app.get("/_sovereign/health", async (c) => {
+    const start = Date.now();
     const chainStats = config.chain?.getStats?.();
     const chainOk = chainStats && chainStats.blocks > 0;
     const kvOk = (() => { try { kv.stats(); return true; } catch { return false; } })();
@@ -190,6 +323,7 @@ export function createGateway(
       bunVersion: Bun.version,
       node:       process.env.SOVEREIGN_NODE_ID ?? "primary",
       uptime:     metrics.uptime,
+      responseMs: Date.now() - start,
       workers:    runtime.workerStats(),
       subsystems: {
         chain:   chainOk  ? "ok" : "degraded",
@@ -201,6 +335,7 @@ export function createGateway(
         events:   chainStats.events,
         anchored: chainStats.anchored,
       } : null,
+      cache: cache.stats(),
       pqc: {
         enabled:         true,
         dualMerkleRoots: true,
@@ -226,7 +361,7 @@ export function createGateway(
       uptime:    metrics.uptime,
       functions: runtime.list().length,
       workers:   runtime.workerStats(),
-      cache:     { size: cache.size },
+      cache:     cache.stats(),
       kv:        kv.stats(),
       chain:     chainStats,
     };
@@ -342,7 +477,7 @@ export function createGateway(
   //  CRITICAL: The catch-all must be registered LAST in server.ts
   //    so it doesn't shadow /_sovereign/* routes.
 
-  return { app, metrics, cache, limiter, config };
+  return { app, metrics, cache, limiter, config, gcTimer };
 }
 
 //  Route matcher 

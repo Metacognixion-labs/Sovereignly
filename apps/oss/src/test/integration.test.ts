@@ -46,7 +46,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await rm(testDir, { recursive: true, force: true });
+  // Allow SQLite WAL to release file handles before cleanup (Windows EBUSY workaround)
+  await new Promise(r => setTimeout(r, 200));
+  await rm(testDir, { recursive: true, force: true }).catch(() => {});
 });
 
 //  1. Chain 

@@ -3,16 +3,15 @@
 import { useState } from "react";
 import { useStore } from "@/stores/config";
 import { toast } from "sonner";
-import { Settings, Save, Trash2, ExternalLink } from "lucide-react";
+import { Settings, Save, Trash2, ExternalLink, LogOut } from "lucide-react";
+import { api } from "@/lib/api";
 
 export default function SettingsPage() {
-  const { endpoint, adminToken, setEndpoint, setAdminToken, clear } = useStore();
+  const { endpoint, setEndpoint, clear } = useStore();
   const [url, setUrl] = useState(endpoint);
-  const [token, setToken] = useState(adminToken);
 
   async function save() {
     setEndpoint(url);
-    setAdminToken(token);
     try {
       const res = await fetch(`${url}/_sovereign/health`, { signal: AbortSignal.timeout(5000) });
       if (res.ok) toast.success("Connected to " + (url || "local server"));
@@ -20,6 +19,13 @@ export default function SettingsPage() {
     } catch {
       toast.error("Cannot reach server at " + (url || "current origin"));
     }
+  }
+
+  async function logout() {
+    await api("/_sovereign/auth/logout", { method: "POST" });
+    clear();
+    toast.info("Signed out");
+    window.location.href = "/login";
   }
 
   return (
@@ -44,23 +50,13 @@ export default function SettingsPage() {
             />
             <p className="text-[10px] text-text-muted mt-1">Leave empty if dashboard is served from the same server</p>
           </div>
-          <div>
-            <label className="block text-xs font-mono text-text-muted uppercase tracking-widest mb-1.5">Admin Token</label>
-            <input
-              type="password"
-              value={token}
-              onChange={e => setToken(e.target.value)}
-              placeholder="sk-sovereign-..."
-              className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm font-mono focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none transition-colors"
-            />
-          </div>
           <div className="flex items-center gap-3 pt-2">
             <button onClick={save} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-background text-sm font-medium hover:bg-brand-bright transition-colors">
               <Save className="w-4 h-4" /> Save & Test
             </button>
-            <button onClick={() => { clear(); setUrl(""); setToken(""); toast.info("Settings cleared"); }}
+            <button onClick={logout}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm text-text-muted hover:text-red hover:border-red/30 transition-colors">
-              <Trash2 className="w-4 h-4" /> Clear
+              <LogOut className="w-4 h-4" /> Sign Out
             </button>
           </div>
         </div>
